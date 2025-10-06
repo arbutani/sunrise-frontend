@@ -1,0 +1,28 @@
+
+import Footer from '@/layouts/components/footer'
+import Sidenav from '@/layouts/components/sidenav'
+import Topbar from '@/layouts/components/topbar'
+import { Fragment } from 'react'
+
+import { ChildrenType } from '@/types'
+
+const VerticalLayout = ({ children }: ChildrenType) => {
+  return (
+    <Fragment>
+      <div className="wrapper">
+        <Sidenav />
+
+        <Topbar />
+
+        <div className="content-page">
+          {children}
+
+          <Footer />
+        </div>
+      </div>
+
+    </Fragment>
+  )
+}
+
+export default VerticalLayout
