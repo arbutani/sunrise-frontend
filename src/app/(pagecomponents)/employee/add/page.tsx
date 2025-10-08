@@ -10,25 +10,28 @@ import Select from 'react-select'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { useToasts } from '@/components/helper/useToasts'
 import Toaster from '@/components/helper/toaster'
-import post from '@/lib/requests'
 import Swal from 'sweetalert2'
 import withReactContent from 'sweetalert2-react-content'
+import { useSelector } from 'react-redux'
+import { RootState } from '@/store'
+import ProtectedRoute from '@/components/ProtectedRoute'
 
 const ReactSwal = withReactContent(Swal)
 
 const EmployeePage = () => {
   const router = useRouter()
   const { toasts, addToast, removeToast } = useToasts()
+  const token = useSelector((state: RootState) => state.auth.token)
 
   const employeeTypes = [
     { label: 'Admin', value: 'admin' },
     { label: 'Store Manager', value: 'Store Manager' },
     { label: 'Delivery Driver', value: 'Delivery Driver' },
-    { label: 'Store Supervisor', value: 'Store Supervisor' },
+    { label: 'Store Suppervisor', value: 'Store Suppervisor' },
   ]
 
   const validationSchema = Yup.object().shape({
-    employee_name: Yup.string().required('Employee Name is required'),
+    name: Yup.string().required('Employee Name is required'),
     email_address: Yup.string().email('Invalid email format').required('Email Address is required'),
     password: Yup.string()
       .min(8, 'Password must be at least 8 characters')
@@ -37,14 +40,7 @@ const EmployeePage = () => {
         'Password must contain uppercase, lowercase, number and special character'
       )
       .required('Password is required'),
-    employee_type: Yup.string().required('Employee Type is required'),
-    salary: Yup.object().shape({
-      monthly_salary: Yup.number().min(0, 'Cannot be negative').nullable(),
-      working_days: Yup.number().min(0).max(31).nullable(),
-      working_hour: Yup.number().min(0).max(24).nullable(),
-      over_time: Yup.number().min(0).nullable(),
-      leave_day: Yup.number().min(0).nullable(),
-    }),
+    type: Yup.string().required('Employee Type is required'),
   })
 
   const { register, handleSubmit, control, formState, reset } = useForm({
@@ -54,24 +50,59 @@ const EmployeePage = () => {
 
   const onSubmit = async (values: any) => {
     try {
-      const payload: any = {
-        employee_name: values.employee_name,
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
+      
+      const payload = {
+        name: values.name,
         email_address: values.email_address,
         password: values.password,
-        employee_type: values.employee_type,
+        type: values.type,
       }
 
-      const salaryData: any = {}
-      if (values.salary?.monthly_salary) salaryData.monthly_salary = parseFloat(values.salary.monthly_salary)
-      if (values.salary?.working_days) salaryData.working_days = parseInt(values.salary.working_days)
-      if (values.salary?.working_hour) salaryData.working_hour = parseInt(values.salary.working_hour)
-      if (values.salary?.over_time) salaryData.over_time = parseFloat(values.salary.over_time)
-      if (values.salary?.leave_day) salaryData.leave_day = parseFloat(values.salary.leave_day)
-      if (Object.keys(salaryData).length > 0) payload.salary = salaryData
+      console.log('Sending payload:', payload)
 
-      const res = await post('/employe-managment', payload, true)
-      if (res.data.status === true) {
-        addToast(res.data.message, { toastClass: 'bg-success', delay: 3000 })
+      
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+
+
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      } else {
+       
+        const stored = localStorage.getItem('user')
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (parsed.token) {
+            headers['Authorization'] = `Bearer ${parsed.token}`
+          }
+        }
+      }
+
+      console.log('Request headers:', headers)
+
+      const response = await fetch(`${API_URL}/employe-managment`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      })
+
+      if (response.status === 401) {
+        addToast('Session expired. Please login again.', { toastClass: 'bg-danger', delay: 3000 })
+        router.push('/login')
+        return
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const res = await response.json()
+      console.log('Response:', res)
+
+      if (res.status === true) {
+        addToast(res.message, { toastClass: 'bg-success', delay: 3000 })
         reset()
         await ReactSwal.fire({
           title: 'Success!',
@@ -81,10 +112,14 @@ const EmployeePage = () => {
         })
         router.push('/employee')
       } else {
-        addToast(res.data.message || 'Error creating employee', { toastClass: 'bg-danger', delay: 3000 })
+        addToast(res.message || 'Error creating employee', { toastClass: 'bg-danger', delay: 3000 })
       }
     } catch (err: any) {
-      addToast(err?.message || 'Something went wrong', { toastClass: 'bg-danger', delay: 3000 })
+      console.error('Error creating employee:', err)
+      addToast(err?.message || 'Something went wrong', { 
+        toastClass: 'bg-danger', 
+        delay: 3000 
+      })
     }
   }
 
@@ -108,12 +143,12 @@ const EmployeePage = () => {
                         <FormLabel>Employee Name <span className="text-danger">*</span></FormLabel>
                         <FormControl
                           type="text"
-                          {...register('employee_name')}
+                          {...register('name')}
                           placeholder="Enter employee name"
-                          isInvalid={!!errors.employee_name}
+                          isInvalid={!!errors.name}
                         />
                         <Form.Control.Feedback type="invalid">
-                          {errors.employee_name?.message as string}
+                          {errors.name?.message as string}
                         </Form.Control.Feedback>
                       </div>
 
@@ -152,7 +187,7 @@ const EmployeePage = () => {
                       <div className="mb-3">
                         <FormLabel>Employee Type <span className="text-danger">*</span></FormLabel>
                         <Controller
-                          name="employee_type"
+                          name="type"
                           control={control}
                           render={({ field }) => (
                             <Select
@@ -161,75 +196,23 @@ const EmployeePage = () => {
                               value={employeeTypes.find(opt => opt.value === field.value) || null}
                               onChange={option => field.onChange(option?.value)}
                               placeholder="Select Employee Type"
+                              isInvalid={!!errors.type}
                             />
                           )}
                         />
-                        {errors.employee_type && <p className="text-danger mt-1 mb-0">{errors.employee_type.message as string}</p>}
+                        {errors.type && <p className="text-danger mt-1 mb-0">{errors.type.message as string}</p>}
                       </div>
                     </Col>
 
                     <Col xs={12} md={6}>
-                      {/* Salary Section */}
-                      <Card>
-                        <Card.Header>
-                          <Card.Title as="h6">Salary Information (Optional)</Card.Title>
-                          <small className="text-warning d-block mt-1">
-                            Leave blank if not applicable
-                          </small>
-                        </Card.Header>
+                      {/* Optional Note */}
+                      <Card className="bg-light">
                         <Card.Body>
-                          <Row>
-                            <Col sm={6}>
-                              <FormLabel>Monthly Salary ($)</FormLabel>
-                              <FormControl
-                                type="number"
-                                step="0.01"
-                                {...register('salary.monthly_salary')}
-                                placeholder="Leave blank if not applicable"
-                                min="0"
-                              />
-                            </Col>
-                            <Col sm={6}>
-                              <FormLabel>Working Days</FormLabel>
-                              <FormControl
-                                type="number"
-                                {...register('salary.working_days')}
-                                placeholder="Leave blank if not applicable"
-                                min="0" max="31"
-                              />
-                            </Col>
-                          </Row>
-
-                          <Row>
-                            <Col sm={6}>
-                              <FormLabel>Working Hours</FormLabel>
-                              <FormControl
-                                type="number"
-                                {...register('salary.working_hour')}
-                                placeholder="Leave blank if not applicable"
-                                min="0" max="24"
-                              />
-                            </Col>
-                            <Col sm={6}>
-                              <FormLabel>Overtime Rate ($/hr)</FormLabel>
-                              <FormControl
-                                type="number"
-                                step="0.01"
-                                {...register('salary.over_time')}
-                                placeholder="Leave blank if not applicable"
-                                min="0"
-                              />
-                            </Col>
-                          </Row>
-
-                          <FormLabel>Leave Days</FormLabel>
-                          <FormControl
-                            type="number"
-                            step="0.01"
-                            {...register('salary.leave_day')}
-                            placeholder="Leave blank if not applicable"
-                            min="0"
-                          />
+                          <h6>Note:</h6>
+                          <p className="mb-0 text-muted">
+                            Salary information can be added later from the employee management page.
+                            Currently, only basic employee information is required.
+                          </p>
                         </Card.Body>
                       </Card>
                     </Col>
@@ -250,4 +233,12 @@ const EmployeePage = () => {
   )
 }
 
-export default EmployeePage
+const Page = () => {
+  return (
+    <ProtectedRoute>
+      <EmployeePage />
+    </ProtectedRoute>
+  )
+}
+
+export default Page

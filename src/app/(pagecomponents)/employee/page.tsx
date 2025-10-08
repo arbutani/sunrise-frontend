@@ -10,15 +10,15 @@ import 'datatables.net-responsive'
 
 import ReactDOMServer from 'react-dom/server'
 import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
-import { Fragment, useEffect, useRef } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import Swal from 'sweetalert2'
 import { useRouter } from 'next/navigation'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState } from '@/store'
-import { setToken } from '@/store/authSlice'
+import { setToken, clearToken } from '@/store/authSlice'
 import { jwtDecode } from 'jwt-decode' 
-import { get, delete_ } from '@/lib/requests'
+import { delete_ } from '@/lib/requests'
 import ProtectedRoute from '@/components/ProtectedRoute' 
 
 const BasicTable = () => {
@@ -26,14 +26,29 @@ const BasicTable = () => {
   const table = useRef<any>(null)
   const router = useRouter()
   const dispatch = useDispatch()
+  const [isTokenValid, setIsTokenValid] = useState(true)
+  const [employees, setEmployees] = useState<any[]>([])
 
-  // ✅ Restore token from localStorage
+ 
   useEffect(() => {
     const stored = localStorage.getItem('user')
     if (stored) {
       const parsed = JSON.parse(stored)
       if (parsed.token) {
         dispatch(setToken(parsed.token))
+      
+        try {
+          const decoded: any = jwtDecode(parsed.token)
+          const currentTime = Date.now() / 1000
+          if (decoded.exp < currentTime) {
+            console.log('Token expired')
+            setIsTokenValid(false)
+            handleTokenExpired()
+          }
+        } catch (error) {
+          console.error('Invalid token:', error)
+          setIsTokenValid(false)
+        }
       }
     }
   }, [dispatch])
@@ -42,10 +57,68 @@ const BasicTable = () => {
   const tokenPayload = token ? jwtDecode<any>(token) : null
   const isAdmin = tokenPayload?.type === 'admin'
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
+
+  useEffect(() => {
+    if (isTokenValid) {
+      fetchEmployees()
+    }
+  }, [isTokenValid])
+
+  const fetchEmployees = async () => {
+    try {
+      console.log('Fetching employees...')
+      
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(`${API_URL}/employe-managment`, {
+        method: 'GET',
+        headers,
+      })
+
+      if (response.status === 401) {
+        setIsTokenValid(false)
+        await handleTokenExpired()
+        return
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('Fetched employees:', data)
+      setEmployees(data)
+    } catch (error) {
+      console.error('Error fetching employees:', error)
+    }
+  }
+
+  const handleTokenExpired = async () => {
+    await Swal.fire({
+      icon: 'warning',
+      title: 'Session Expired',
+      text: 'Your session has expired. Please login again.',
+      confirmButtonText: 'Login',
+    })
+    
+   
+    dispatch(clearToken())
+    localStorage.removeItem('user')
+    router.push('/login')
+  }
+
   const options = {
     responsive: true,
-    serverSide: true,
+    serverSide: false,
     processing: true,
+    data: employees, 
     language: {
       paginate: {
         first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
@@ -53,51 +126,17 @@ const BasicTable = () => {
         next: ReactDOMServer.renderToStaticMarkup(<TbChevronRight className="fs-lg" />),
         last: ReactDOMServer.renderToStaticMarkup(<TbChevronsRight className="fs-lg" />),
       },
-    },
-    ajax: async (dtData: any, callback: (data: any) => void) => {
-      try {
-        const params = new URLSearchParams()
-        params.append('start', dtData.start || '0')
-        params.append('length', dtData.length || '10')
-        params.append('draw', dtData.draw || '1')
-
-        if (dtData.search?.value) {
-          params.append('search[value]', dtData.search.value)
-        }
-        if (dtData.order?.length > 0) {
-          dtData.order.forEach((order: any, index: number) => {
-            params.append(`order[${index}][column]`, order.column)
-            params.append(`order[${index}][dir]`, order.dir)
-          })
-        }
-
-        const url = `employe-managment?${params.toString()}`
-        const response = await get(url, true)
-        const apiData = response.data
-
-        const mappedData = apiData.data.map((item: any) => ({
-          id: item.id,
-          employee_name: item.employee_name,
-          email_address: item.email_address,
-          employee_salary: item.employee_salary,
-          total_payable_salary: item.total_payable_salary,
-        }))
-
-        callback({
-          draw: apiData.draw,
-          data: mappedData,
-          recordsTotal: apiData.recordsTotal,
-          recordsFiltered: apiData.recordsFiltered,
-        })
-      } catch (error) {
-        callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
-      }
+      emptyTable: 'No employees found',
+      zeroRecords: 'No matching records found',
     },
     columns: [
-      { title: 'Name', data: 'employee_name' },
+      { title: 'Name', data: 'name' },
       { title: 'E-Mail Address', data: 'email_address' },
-      { title: 'Salary', data: 'employee_salary' },
-      { title: 'Payable Salary', data: 'total_payable_salary' },
+      { title: 'Type', data: 'type' },
+      { title: 'Reference Number', data: 'reference_number' },
+      { title: 'Reference Date', data: 'reference_date' },
+      { title: 'Created At', data: 'createdAt' },
+      { title: 'Updated At', data: 'updatedAt' },
       {
         title: 'Actions',
         data: 'id',
@@ -114,11 +153,24 @@ const BasicTable = () => {
         },
       },
     ],
+    drawCallback: function () {
+     
+    },
+    initComplete: function () {
+      console.log('DataTable initialized')
+    }
   }
 
   useEffect(() => {
     const handleClick = async (e: any) => {
       const target = e.target
+
+      
+      if (!isTokenValid) {
+        e.preventDefault()
+        await handleTokenExpired()
+        return
+      }
 
       if (!isAdmin && (target.classList.contains('btn-edit') || target.classList.contains('btn-delete') || target.classList.contains('btn-view'))) {
         e.preventDefault()
@@ -138,9 +190,14 @@ const BasicTable = () => {
 
     document.addEventListener('click', handleClick)
     return () => document.removeEventListener('click', handleClick)
-  }, [isAdmin, router])
+  }, [isAdmin, isTokenValid, router])
 
   const handleDelete = async (e: any) => {
+    if (!isTokenValid) {
+      await handleTokenExpired()
+      return
+    }
+
     const id = e.target.getAttribute('data-id')
     const result = await Swal.fire({
       title: 'Are you sure?',
@@ -154,10 +211,32 @@ const BasicTable = () => {
 
     if (result.isConfirmed) {
       try {
-        await delete_(`employe-managment/${id}`)
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        }
+        
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+
+        const response = await fetch(`${API_URL}/employe-managment/${id}`, {
+          method: 'DELETE',
+          headers,
+        })
+
+        if (response.status === 401) {
+          setIsTokenValid(false)
+          await handleTokenExpired()
+          return
+        }
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
         Swal.fire('Deleted!', 'Employee has been deleted.', 'success').then(() => {
-          if (table.current) table.current.ajax.reload(null, false)
-          else router.refresh()
+        
+          fetchEmployees()
         })
       } catch (error) {
         Swal.fire('Error!', 'Failed to delete employee.', 'error')
@@ -166,27 +245,49 @@ const BasicTable = () => {
   }
 
   const handleView = (e: any) => {
+    if (!isTokenValid) {
+      handleTokenExpired()
+      return
+    }
+
     const id = e.target.getAttribute('data-id')
     router.push(`/employee/view/${id}`)
   }
 
   return (
     <ComponentCard title="Employee List">
-      <DataTable
-        ref={table}
-        options={options}
-        className="table table-striped dt-responsive align-middle mb-0"
-      >
-        <thead className="thead-sm text-uppercase fs-xxs">
-          <tr>
-            <th>Name</th>
-            <th>E-Mail Address</th>
-            <th>Salary</th>
-            <th>Payable Salary</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-      </DataTable>
+      {!isTokenValid && (
+        <div className="alert alert-warning mb-3">
+          <i className="mdi mdi-alert-circle-outline me-2"></i>
+          Your session has expired. Please login again to continue.
+        </div>
+      )}
+      
+      {/* Simple table agar DataTable kaam na kare */}
+      {employees.length === 0 ? (
+        <div className="text-center p-4">
+          <p>Loading employees...</p>
+        </div>
+      ) : (
+        <DataTable
+          ref={table}
+          options={options}
+          className="table table-striped dt-responsive align-middle mb-0"
+        >
+          <thead className="thead-sm text-uppercase fs-xxs">
+            <tr>
+              <th>Name</th>
+              <th>E-Mail Address</th>
+              <th>Type</th>
+              <th>Reference Number</th>
+              <th>Reference Date</th>
+              <th>Created At</th>
+              <th>Updated At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+        </DataTable>
+      )}
     </ComponentCard>
   )
 }

@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation';
 import post from '@/lib/requests';
 import { useDispatch, useSelector } from 'react-redux'
 import { setToken } from '@/store/authSlice'
-import { RootState } from '@/store/store'
+import { RootState } from '@/store'; 
 import { useEffect, useState } from 'react'
 
 const Page = () => {
@@ -23,9 +23,9 @@ const Page = () => {
   const token = useSelector((state: RootState) => state.auth.token)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
 
-  // Agar user already logged in hai to dashboard redirect karo
+  
   useEffect(() => {
-    // Small delay to ensure Redux state is loaded
+   
     const timer = setTimeout(() => {
       if (token) {
         router.replace('/mainDeshbord')
@@ -57,7 +57,7 @@ const Page = () => {
         localStorage.setItem('token', token)
         addToast('Login Success', { toastClass: 'bg-success', delay: 3000 })
         
-        // Replace use karein push ki jagah - yeh history entry nahi banata
+      
         router.replace('/mainDeshbord')
       } else {
         if (Array.isArray(res.data.message)) {
@@ -71,7 +71,7 @@ const Page = () => {
     }
   }
 
-  // Agar auth check ho raha hai to loading show karo
+  
   if (isCheckingAuth) {
     return (
       <div className="auth-box overflow-hidden align-items-center d-flex justify-content-center" style={{ minHeight: '100vh' }}>
