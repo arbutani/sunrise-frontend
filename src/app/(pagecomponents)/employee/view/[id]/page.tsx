@@ -2,56 +2,107 @@
 
 import ComponentCard from '@/components/cards/ComponentCard'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
-import { Card, Col, Container, Row } from 'react-bootstrap'
+import { Card, Col, Container, Row, Button } from 'react-bootstrap'
 
 import DT from 'datatables.net-bs5'
 import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
 
 import ReactDOMServer from 'react-dom/server'
-import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
-import { Fragment, useEffect, useRef } from 'react'
+import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight, TbArrowLeft } from 'react-icons/tb'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { useSelector, useDispatch } from 'react-redux'
-import { RootState } from '@/store'
-import { setToken } from '@/store/authSlice'
-import { jwtDecode } from 'jwt-decode'
-import { get } from '@/lib/requests'
+import { useDispatch } from 'react-redux'
 
-const BasicTable = () => {
-  DataTable.use(DT)
-  const table = useRef<any>(null)
+import { setToken } from '@/store/authSlice'
+
+import { get } from '@/lib/requests'
+import ProtectedRoute from '@/components/ProtectedRoute' // ✅ ProtectedRoute import karo
+
+const EmployeeDetailsCard = ({ employeeId }: { employeeId: string }) => {
+  const [employeeData, setEmployeeData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
-  const dispatch = useDispatch()
-  const params = useParams()
-  const employeeId = params?.id
 
   useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      if (parsed.token) {
-        dispatch(setToken(parsed.token))
+    const fetchEmployeeDetails = async () => {
+      try {
+        const response = await get(`employe-managment/${employeeId}`, true)
+        if (response.data && response.data.data) {
+          setEmployeeData(response.data.data)
+        }
+      } catch (error) {
+        console.error('Error fetching employee details:', error)
+      } finally {
+        setLoading(false)
       }
     }
-  }, [dispatch])
 
-  const handleEditClick = (event: any) => {
-    const button = event.target.closest('.btn-edit')
-    if (button) {
-      const id = button.getAttribute('data-id')
-      if (id) {
-        router.push(`/employee/view/${id}/edit`)
-      }
+    if (employeeId) {
+      fetchEmployeeDetails()
     }
+  }, [employeeId])
+
+  if (loading) {
+    return (
+      <Card className="mb-3">
+        <Card.Body>
+          <p className="text-center mb-0">Loading employee details...</p>
+        </Card.Body>
+      </Card>
+    )
   }
 
-  useEffect(() => {
-    document.addEventListener('click', handleEditClick)
-    return () => {
-      document.removeEventListener('click', handleEditClick)
-    }
-  }, [])
+  if (!employeeData) {
+    return null
+  }
+
+  return (
+    <Card className="mb-3">
+      <Card.Header className="d-flex justify-content-between align-items-center">
+        <h5 className="card-title mb-0">Employee Details</h5>
+        <Button 
+          variant="primary" 
+          onClick={() => router.push('/employee')}
+          className="d-flex align-items-center gap-2"
+        >
+          <TbArrowLeft className="fs-lg" />
+          Back to Employees
+        </Button>
+      </Card.Header>
+      <Card.Body>
+        <Row>
+          <Col md={6}>
+            <p className="mb-2">
+              <strong>Name:</strong> {employeeData.name}
+            </p>
+            <p className="mb-2">
+              <strong>Email:</strong> {employeeData.email_address}
+            </p>
+            <p className="mb-2">
+              <strong>Type:</strong> {employeeData.type}
+            </p>
+          </Col>
+          <Col md={6}>
+            <p className="mb-2">
+              <strong>Reference Number:</strong> {employeeData.reference_number}
+            </p>
+            <p className="mb-2">
+              <strong>Reference Date:</strong> {employeeData.reference_date}
+            </p>
+            <p className="mb-2">
+              <strong>Created At:</strong> {employeeData.createdAt}
+            </p>
+          </Col>
+        </Row>
+      </Card.Body>
+    </Card>
+  )
+}
+
+const BasicTable = ({ employeeId }: { employeeId: string }) => {
+  DataTable.use(DT)
+  const table = useRef<any>(null)
 
   const options = {
     responsive: true,
@@ -71,16 +122,16 @@ const BasicTable = () => {
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
           return
         }
-        const url = `employee-salary/${employeeId}`
+        const url = `employee-salary/employee/${employeeId}`
         const response = await get(url, true)
         const apiData = response.data
         if (apiData && apiData.data) {
-          const d = apiData.data
+          const salaryData = apiData.data
           callback({
             draw: 1,
-            data: [d],
-            recordsTotal: 1,
-            recordsFiltered: 1,
+            data: salaryData,
+            recordsTotal: salaryData.length,
+            recordsFiltered: salaryData.length,
           })
         } else {
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
@@ -93,26 +144,13 @@ const BasicTable = () => {
       { title: 'Monthly Salary', data: 'monthly_salary' },
       { title: 'Working Days', data: 'working_days' },
       { title: 'Working Hours', data: 'working_hour' },
-      { title: 'Over Time', data: 'over_time' },
-      { title: 'Leave Days', data: 'leave_day' },
-      { title: 'Attempts Days', data: 'total_attempts_day' },
-      { title: 'Payable Salary', data: 'total_payable_salary' },
-      {
-        title: 'Action',
-        data: 'id',
-        render: function (data: any, type: any, row: any) {
-          return `
-            <div class="d-flex gap-2">
-                <button type="button" data-id="${employeeId}" class="btn-soft-primary btn-edit btn btn-primary">Edit</button>
-            </div>
-          `
-        },
-      },
+      { title: 'Created At', data: 'createdAt' },
+      { title: 'Updated At', data: 'updatedAt' },
     ],
   }
 
   return (
-    <ComponentCard title="Employee Salary Details">
+    <ComponentCard title="Employee Salary Records">
       <DataTable
         ref={table}
         options={options}
@@ -123,11 +161,8 @@ const BasicTable = () => {
             <th>Monthly Salary</th>
             <th>Working Days</th>
             <th>Working Hours</th>
-            <th>Over Time</th>
-            <th>Leave Days</th>
-            <th>Attempts Days</th>
-            <th>Payable Salary</th>
-            <th>Action</th>
+            <th>Created At</th>
+            <th>Updated At</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -136,7 +171,22 @@ const BasicTable = () => {
   )
 }
 
-const Page = () => {
+const EmployeeSalaryPage = () => {
+  const router = useRouter()
+  const dispatch = useDispatch()
+  const params = useParams()
+  const employeeId = params?.id as string
+
+  useEffect(() => {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (parsed.token) {
+        dispatch(setToken(parsed.token))
+      }
+    }
+  }, [dispatch])
+
   return (
     <Fragment>
       <Container fluid>
@@ -146,11 +196,21 @@ const Page = () => {
       <Container fluid>
         <Row className="justify-content-center">
           <Col sm={12}>
-            <BasicTable />
+            {employeeId && <EmployeeDetailsCard employeeId={employeeId} />}
+            {employeeId && <BasicTable employeeId={employeeId} />}
           </Col>
         </Row>
       </Container>
     </Fragment>
+  )
+}
+
+
+const Page = () => {
+  return (
+    <ProtectedRoute>
+      <EmployeeSalaryPage />
+    </ProtectedRoute>
   )
 }
 

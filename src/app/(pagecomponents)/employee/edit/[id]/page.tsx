@@ -52,8 +52,8 @@ const dropdownStyles = {
   }),
 }
 
+// Admin removed from employee types
 const employeeTypes = [
-  { label: 'Admin', value: 'admin' },
   { label: 'Store Manager', value: 'Store Manager' },
   { label: 'Delivery Driver', value: 'Delivery Driver' },
   { label: 'Store Supervisor', value: 'Store Supervisor' },
@@ -72,6 +72,24 @@ const EmployeeUpdatePage = () => {
     email_address: Yup.string().required('E-Mail address is required'),
     password: Yup.string().optional(),
     type: Yup.string().required('Employee type is required'),
+    // Add salary fields to main validation schema
+    monthly_salary: Yup.number()
+      .typeError('Monthly salary must be a number')
+      .min(0, 'Monthly salary cannot be negative')
+      .nullable()
+      .optional(),
+    working_days: Yup.number()
+      .typeError('Working days must be a number')
+      .min(0, 'Working days cannot be negative')
+      .max(31, 'Working days cannot exceed 31')
+      .nullable()
+      .optional(),
+    working_hour: Yup.number()
+      .typeError('Working hours must be a number')
+      .min(0, 'Working hours cannot be negative')
+      .max(24, 'Working hours cannot exceed 24')
+      .nullable()
+      .optional(),
   });
 
   const formOptions = { resolver: yupResolver(validationSchema) };
@@ -89,13 +107,11 @@ const EmployeeUpdatePage = () => {
       'Content-Type': 'application/json',
     };
     
-    
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
       return headers;
     }
     
-   
     const stored = localStorage.getItem('user');
     if (stored) {
       try {
@@ -105,10 +121,9 @@ const EmployeeUpdatePage = () => {
           return headers;
         }
       } catch (error) {
-       
+        // Ignore error
       }
     }
-    
     
     return headers;
   }
@@ -118,8 +133,6 @@ const EmployeeUpdatePage = () => {
       setLoading(true);
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
       const headers = getAuthHeaders();
-
-   
 
       const response = await fetch(`${API_URL}/employe-managment/${id}`, {
         method: 'GET',
@@ -137,19 +150,25 @@ const EmployeeUpdatePage = () => {
       }
 
       const res = await response.json();
-      
 
       if (res.status) {
         const data = res.data;
+        
         setValue('name', data.name || "");
         setValue('email_address', data.email_address || "");
         setValue('type', data.type || "");
+        
+        // Set salary values if they exist
+        if (data.salary) {
+          setValue('monthly_salary', data.salary.monthly_salary || "");
+          setValue('working_days', data.salary.working_days || "");
+          setValue('working_hour', data.salary.working_hour || "");
+        }
       } else {
         const message = Array.isArray(res.message) ? 'All Fields are required.' : res.message;
         addToast(message, { toastClass: 'bg-danger', delay: 3000 });
       }
     } catch (error) {
-      
       addToast(HandleError(error, router), { toastClass: 'bg-danger', delay: 3000 });
     } finally {
       setLoading(false);
@@ -158,7 +177,6 @@ const EmployeeUpdatePage = () => {
 
   const onSubmit = async (formField: any) => {
     try {
-      
       const putData: any = {
         name: formField.name,
         email_address: formField.email_address,
@@ -169,12 +187,25 @@ const EmployeeUpdatePage = () => {
         putData.password = formField.password;
       }
 
+      // Add salary data only if at least one field is provided
+      const hasSalaryData = formField.monthly_salary || formField.working_days || formField.working_hour;
       
+      if (hasSalaryData) {
+        putData.salary = {};
+        
+        if (formField.monthly_salary) {
+          putData.salary.monthly_salary = Number(formField.monthly_salary);
+        }
+        if (formField.working_days) {
+          putData.salary.working_days = Number(formField.working_days);
+        }
+        if (formField.working_hour) {
+          putData.salary.working_hour = Number(formField.working_hour);
+        }
+      }
 
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
       const headers = getAuthHeaders();
-
-   
 
       const response = await fetch(`${API_URL}/employe-managment/${employeeId}`, {
         method: 'PUT',
@@ -193,7 +224,6 @@ const EmployeeUpdatePage = () => {
       }
 
       const res = await response.json();
-     
 
       if (res.status) {
         addToast(res.message, { toastClass: 'bg-success', delay: 3000 });
@@ -207,7 +237,6 @@ const EmployeeUpdatePage = () => {
         });
         if (result.isConfirmed) router.push('/employee');
       } else {
-      
         if (Array.isArray(res.message)) {
           res.message.forEach((error: any) => {
             addToast(`${error.field}: ${error.message}`, { toastClass: 'bg-danger', delay: 3000 });
@@ -217,7 +246,6 @@ const EmployeeUpdatePage = () => {
         }
       }
     } catch (error) {
-    
       addToast(HandleError(error, router), { toastClass: 'bg-danger', delay: 3000 });
     }
   }
@@ -306,6 +334,43 @@ const EmployeeUpdatePage = () => {
                         }}
                       />
                       {errors.type && <p className="text-danger mt-1">{errors.type.message}</p>}
+                    </div>
+
+                    {/* Salary Fields */}
+                    <div className="mb-3 form-group">
+                      <FormLabel>Monthly Salary</FormLabel>
+                      <FormControl 
+                        type="number" 
+                        {...register('monthly_salary')}
+                        placeholder="Enter monthly salary" 
+                        min="0"
+                        step="0.01"
+                      />
+                      {errors.monthly_salary && <p className="text-danger">{errors.monthly_salary.message}</p>}
+                    </div>
+
+                    <div className="mb-3 form-group">
+                      <FormLabel>Working Days (per month)</FormLabel>
+                      <FormControl 
+                        type="number" 
+                        {...register('working_days')}
+                        placeholder="Enter working days" 
+                        min="0"
+                        max="31"
+                      />
+                      {errors.working_days && <p className="text-danger">{errors.working_days.message}</p>}
+                    </div>
+
+                    <div className="mb-3 form-group">
+                      <FormLabel>Working Hours (per day)</FormLabel>
+                      <FormControl 
+                        type="number" 
+                        {...register('working_hour')}
+                        placeholder="Enter working hours" 
+                        min="0"
+                        max="24"
+                      />
+                      {errors.working_hour && <p className="text-danger">{errors.working_hour.message}</p>}
                     </div>
 
                     <div className="d-grid mt-3">

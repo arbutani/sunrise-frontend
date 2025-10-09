@@ -22,12 +22,58 @@ const EmployeePage = () => {
   const router = useRouter()
   const { toasts, addToast, removeToast } = useToasts()
   const token = useSelector((state: RootState) => state.auth.token)
+  const user = useSelector((state: RootState) => state.auth.user)
 
-  const employeeTypes = [
-    { label: 'Store Manager', value: 'Store Manager' },
-    { label: 'Delivery Driver', value: 'Delivery Driver' },
-    { label: 'Store Suppervisor', value: 'Store Suppervisor' },
-  ]
+  
+  useEffect(() => {
+    const checkUserAccess = () => {
+      let userType = null
+
+     
+      if (user && user.type) {
+        userType = user.type
+      } else {
+        
+        const stored = localStorage.getItem('user')
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored)
+            userType = parsed.type || parsed.user_type
+          } catch (error) {
+            console.error('Error parsing user data:', error)
+          }
+        }
+      }
+
+      
+      if (token && !userType) {
+        try {
+          const tokenParts = token.split('.')
+          if (tokenParts.length === 3) {
+            const payload = JSON.parse(atob(tokenParts[1]))
+            if (payload.type) {
+              userType = payload.type
+            }
+          }
+        } catch (error) {
+          console.error('Error decoding token:', error)
+        }
+      }
+      
+      if (userType && userType.toLowerCase() !== 'admin') {
+        ReactSwal.fire({
+          title: 'Access Denied!',
+          text: 'You do not have permission to access this page.',
+          icon: 'error',
+          confirmButtonText: 'OK',
+        }).then(() => {
+          router.push('/mainDeshbord')
+        })
+      }
+    }
+
+    checkUserAccess()
+  }, [router, token, user])
 
   const validationSchema = Yup.object().shape({
     name: Yup.string().required('Employee Name is required'),
@@ -39,21 +85,6 @@ const EmployeePage = () => {
         'Password must contain uppercase, lowercase, number and special character'
       )
       .required('Password is required'),
-    type: Yup.string().required('Employee Type is required'),
-    monthly_salary: Yup.number()
-      .typeError('Monthly Salary must be a number')
-      .positive('Monthly Salary must be positive')
-      .required('Monthly Salary is required'),
-    working_days: Yup.number()
-      .typeError('Working Days must be a number')
-      .positive('Working Days must be positive')
-      .max(31, 'Working Days cannot exceed 31')
-      .required('Working Days is required'),
-    working_hour: Yup.number()
-      .typeError('Working Hour must be a number')
-      .positive('Working Hour must be positive')
-      .max(24, 'Working Hour cannot exceed 24')
-      .required('Working Hour is required'),
   })
 
   const { register, handleSubmit, control, formState, reset } = useForm({
@@ -69,12 +100,7 @@ const EmployeePage = () => {
         name: values.name,
         email_address: values.email_address,
         password: values.password,
-        type: values.type,
-        salary: {
-          monthly_salary: values.monthly_salary,
-          working_days: values.working_days,
-          working_hour: values.working_hour,
-        }
+        type: "admin",
       }
 
       console.log('Sending payload:', payload)
@@ -125,7 +151,6 @@ const EmployeePage = () => {
           icon: 'success',
           confirmButtonText: 'OK',
         })
-        router.push('/employee')
       } else {
         addToast(res.message || 'Error creating employee', { toastClass: 'bg-danger', delay: 3000 })
       }
@@ -141,21 +166,23 @@ const EmployeePage = () => {
   return (
     <Fragment>
       <Toaster toasts={toasts} addToast={addToast} removeToast={removeToast} />
-      <Container fluid className="px-2 px-sm-3">
+      <Container fluid className="px-2 px-sm-3 px-md-4">
         <PageBreadcrumb title="Add Employee" subtitle="Employee List" />
-        <Row className="justify-content-center mt-3">
-          <Col xs={12} lg={10} xl={8}>
-            <Card>
-              <Card.Header>
-                <Card.Title as="h5">Add New Employee</Card.Title>
+        <Row className="justify-content-center mt-2 mt-sm-3 mt-md-4">
+          <Col xs={12} sm={12} md={11} lg={10} xl={8}>
+            <Card className="shadow-sm">
+              <Card.Header className="bg-white border-bottom">
+                <Card.Title as="h5" className="mb-0 py-2">Add New Employee</Card.Title>
               </Card.Header>
-              <Card.Body className="p-3 p-sm-4">
+              <Card.Body className="p-3 p-sm-4 p-md-5">
                 <Form onSubmit={handleSubmit(onSubmit)}>
                   <Row>
-                    <Col xs={12} md={6}>
+                    <Col xs={12}>
                       {/* Employee Name */}
-                      <div className="mb-3">
-                        <FormLabel>Employee Name <span className="text-danger">*</span></FormLabel>
+                      <div className="mb-3 mb-md-4">
+                        <FormLabel className="fw-semibold">
+                          Employee Name <span className="text-danger">*</span>
+                        </FormLabel>
                         <FormControl
                           type="text"
                           {...register('name')}
@@ -168,8 +195,10 @@ const EmployeePage = () => {
                       </div>
 
                       {/* Email */}
-                      <div className="mb-3">
-                        <FormLabel>Email Address <span className="text-danger">*</span></FormLabel>
+                      <div className="mb-3 mb-md-4">
+                        <FormLabel className="fw-semibold">
+                          Email Address <span className="text-danger">*</span>
+                        </FormLabel>
                         <FormControl
                           type="email"
                           {...register('email_address')}
@@ -182,103 +211,32 @@ const EmployeePage = () => {
                       </div>
 
                       {/* Password */}
-                      <div className="mb-3">
-                        <FormLabel>Password <span className="text-danger">*</span></FormLabel>
+                      <div className="mb-3 mb-md-4">
+                        <FormLabel className="fw-semibold">
+                          Password <span className="text-danger">*</span>
+                        </FormLabel>
                         <FormControl
                           type="password"
                           {...register('password')}
                           placeholder="Enter password"
                           isInvalid={!!errors.password}
                         />
-                        <Form.Text className="text-muted">
+                        <Form.Text className="text-muted d-block mt-2 small">
                           At least 8 characters, include uppercase, lowercase, number & special character
                         </Form.Text>
                         <Form.Control.Feedback type="invalid">
                           {errors.password?.message as string}
                         </Form.Control.Feedback>
                       </div>
-
-                      {/* Employee Type */}
-                      <div className="mb-3">
-                        <FormLabel>Employee Type <span className="text-danger">*</span></FormLabel>
-                        <Controller
-                          name="type"
-                          control={control}
-                          render={({ field }) => (
-                            <Select
-                              {...field}
-                              options={employeeTypes}
-                              value={employeeTypes.find(opt => opt.value === field.value) || null}
-                              onChange={option => field.onChange(option?.value)}
-                              placeholder="Select Employee Type"
-                              isInvalid={!!errors.type}
-                            />
-                          )}
-                        />
-                        {errors.type && <p className="text-danger mt-1 mb-0">{errors.type.message as string}</p>}
-                      </div>
-                    </Col>
-
-                    <Col xs={12} md={6}>
-                      {/* Salary Fields */}
-                      <div className="mb-3">
-                        <FormLabel>Monthly Salary <span className="text-danger">*</span></FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('monthly_salary')}
-                          placeholder="Enter monthly salary"
-                          isInvalid={!!errors.monthly_salary}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.monthly_salary?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      <div className="mb-3">
-                        <FormLabel>Working Days per Month <span className="text-danger">*</span></FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('working_days')}
-                          placeholder="Enter working days"
-                          min="1"
-                          max="31"
-                          isInvalid={!!errors.working_days}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.working_days?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      <div className="mb-3">
-                        <FormLabel>Working Hours per Day <span className="text-danger">*</span></FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('working_hour')}
-                          placeholder="Enter working hours"
-                          min="1"
-                          max="24"
-                          isInvalid={!!errors.working_hour}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.working_hour?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      {/* Optional Note */}
-                      <Card className="bg-light">
-                        <Card.Body>
-                          <h6>Note:</h6>
-                          <p className="mb-0 text-muted">
-                            Salary information is required for all employees. Make sure to enter accurate salary details.
-                          </p>
-                        </Card.Body>
-                      </Card>
                     </Col>
                   </Row>
 
-                  <div className="d-grid mt-3">
-                    <Button type="submit" disabled={formState.isSubmitting} size="lg">
-                      {formState.isSubmitting ? 'Creating Employee...' : 'Create Employee'}
+                  <div className="d-grid gap-2 mt-3 mt-md-4">
+                    <Button 
+                      type="submit" 
+                      disabled={formState.isSubmitting}
+                    >
+                      {formState.isSubmitting ? 'Creating Admin...' : 'Create Admin'}
                     </Button>
                   </div>
                 </Form>

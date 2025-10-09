@@ -5,6 +5,7 @@ import {
  
   LuCircleGauge,
   LuUsers,
+  LuUserX,
  
 } from 'react-icons/lu'
 
@@ -76,6 +77,12 @@ export const menuItems: MenuItemType[] = [
     label: 'Employee',
     icon: LuUsers,
     url: '/employee',
+   },
+   {
+    key: 'admin',
+    label: 'Admin',
+    icon: LuUserX,
+    url: '/admin',
    }, 
  
 ]
