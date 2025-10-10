@@ -1034,6 +1034,13 @@
   resolved "https://registry.npmjs.org/@types/geojson/-/geojson-7946.0.16.tgz"
   integrity sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==
 
+"@types/jquery@^3.5.33":
+  version "3.5.33"
+  resolved "https://registry.npmjs.org/@types/jquery/-/jquery-3.5.33.tgz"
+  integrity sha512-SeyVJXlCZpEki5F0ghuYe+L+PprQta6nRZqhONt9F13dWBtR/ftoaIbdRQ7cis7womE+X2LKhsDdDtkkDhJS6g==
+  dependencies:
+    "@types/sizzle" "*"
+
 "@types/json-schema@^7.0.15":
   version "7.0.15"
   resolved "https://registry.npmjs.org/@types/json-schema/-/json-schema-7.0.15.tgz"
@@ -1089,6 +1096,11 @@
   integrity sha512-lr3jdBw/BGj49Eps7EvqlUaoeA0xpj3pc0RoJkHpYaCHkVK7i28dKyImLQb3JVlqs3aYSXf7qYuWOW/fgZnTXQ==
   dependencies:
     csstype "^3.0.2"
+
+"@types/sizzle@*":
+  version "2.3.10"
+  resolved "https://registry.npmjs.org/@types/sizzle/-/sizzle-2.3.10.tgz"
+  integrity sha512-TC0dmN0K8YcWEAEfiPi5gJP14eJe30TTGjkvek3iM/1NdHHsdCA/Td6GvNndMOo/iSnIsZ4HuuhrYPDAmbxzww==
 
 "@types/sortablejs@^1.15.8", "@types/sortablejs@1":
   version "1.15.8"

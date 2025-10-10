@@ -5,7 +5,8 @@ export const currency: CurrencyType = '$'
 export const currentYear = new Date().getFullYear()
 
 export const appName = 'KrButani'
-export const appTitle = 'Hello World'
+export const appTitle = ""
+
 export const appDescription: string =
   'hi there'
 

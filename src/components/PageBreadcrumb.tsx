@@ -5,9 +5,10 @@ import { TbChevronRight } from 'react-icons/tb'
 type PageBreadcrumbProps = {
   title: string
   subtitle?: string
+  subtitleLink?: string // <-- new prop
 }
 
-const PageBreadcrumb = ({ title, subtitle }: PageBreadcrumbProps) => {
+const PageBreadcrumb = ({ title, subtitle, subtitleLink }: PageBreadcrumbProps) => {
   return (
     <div className="page-title-head d-flex align-items-center">
       <div className="flex-grow-1">
@@ -17,13 +18,16 @@ const PageBreadcrumb = ({ title, subtitle }: PageBreadcrumbProps) => {
         <div className="breadcrumb m-0 py-0 d-flex align-items-center gap-1">
           <BreadcrumbItem linkAs={Link} href="/mainDeshbord">
             Home
-          </BreadcrumbItem>{' '}
+          </BreadcrumbItem>
           <TbChevronRight />
           {subtitle && (
             <>
-              <BreadcrumbItem linkAs={Link} href="">
+              <BreadcrumbItem
+                linkAs={Link}
+                href={subtitleLink ? subtitleLink : "#"} // <-- use the link if provided
+              >
                 {subtitle}
-              </BreadcrumbItem>{' '}
+              </BreadcrumbItem>
               <TbChevronRight />
             </>
           )}

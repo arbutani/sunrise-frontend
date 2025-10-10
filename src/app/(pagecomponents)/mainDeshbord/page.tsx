@@ -1,11 +1,20 @@
 'use client'
-
+import { useEffect, Fragment} from 'react'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Container } from 'react-bootstrap'
-import { Fragment } from 'react'
-import ProtectedRoute from '@/components/ProtectedRoute' 
+import ProtectedRoute from '@/components/ProtectedRoute'
+import { appTitle } from '@/helpers'
+ 
+
+
+
 
 const Page = () => {
+
+  useEffect(() => {
+    document.title = `${appTitle}Dashboard`
+  }, [])
+
   return (
     <ProtectedRoute>
     <Fragment>

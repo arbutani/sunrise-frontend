@@ -2,11 +2,10 @@
 
 import { useEffect, Fragment, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as Yup from 'yup'
 import { Container, Card, Form, FormLabel, FormControl, Button, Row, Col, Spinner } from 'react-bootstrap'
-import Select from 'react-select'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { useToasts } from '@/components/helper/useToasts'
 import Toaster from '@/components/helper/toaster'
@@ -19,11 +18,11 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 import { appTitle } from '@/helpers'
 import { jwtDecode } from 'jwt-decode'
 
-const ReactSwal = withReactContent(Swal)
 
+const ReactSwal = withReactContent(Swal)
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-// Token validation function
+// Token validation helper
 const validateToken = (token: string): boolean => {
   try {
     const decoded: any = jwtDecode(token)
@@ -34,7 +33,7 @@ const validateToken = (token: string): boolean => {
   }
 }
 
-const EmployeePage = () => {
+const AddAdminPage = () => {
   const router = useRouter()
   const dispatch = useDispatch()
   const { toasts, addToast, removeToast } = useToasts()
@@ -42,17 +41,11 @@ const EmployeePage = () => {
   const [isAuthChecking, setIsAuthChecking] = useState(true)
 
   useEffect(() => {
-    document.title = `${appTitle}Add Employee`
+    document.title = `${appTitle}Add Admin`
   }, [])
 
-  const employeeTypes = [
-    { label: 'Store Manager', value: 'Store Manager' },
-    { label: 'Delivery Driver', value: 'Delivery Driver' },
-    { label: 'Store Suppervisor', value: 'Store Suppervisor' },
-  ]
-
   const validationSchema = Yup.object().shape({
-    name: Yup.string().required('Employee Name is required'),
+    name: Yup.string().required('Admin Name is required'),
     email_address: Yup.string().email('Invalid email format').required('Email Address is required'),
     password: Yup.string()
       .min(8, 'Password must be at least 8 characters')
@@ -61,24 +54,9 @@ const EmployeePage = () => {
         'Password must contain uppercase, lowercase, number and special character'
       )
       .required('Password is required'),
-    type: Yup.string().required('Employee Type is required'),
-    monthly_salary: Yup.number()
-      .typeError('Monthly Salary must be a number')
-      .positive('Monthly Salary must be positive')
-      .required('Monthly Salary is required'),
-    working_days: Yup.number()
-      .typeError('Working Days must be a number')
-      .positive('Working Days must be positive')
-      .max(31, 'Working Days cannot exceed 31')
-      .required('Working Days is required'),
-    working_hour: Yup.number()
-      .typeError('Working Hour must be a number')
-      .positive('Working Hour must be positive')
-      .max(24, 'Working Hour cannot exceed 24')
-      .required('Working Hour is required'),
   })
 
-  const { register, handleSubmit, control, formState, reset } = useForm({
+  const { register, handleSubmit, formState, reset } = useForm({
     resolver: yupResolver(validationSchema),
   })
   const { errors } = formState
@@ -91,7 +69,7 @@ const EmployeePage = () => {
       confirmButtonText: 'Login',
       allowOutsideClick: false,
     })
-    
+
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
@@ -131,17 +109,12 @@ const EmployeePage = () => {
         name: values.name,
         email_address: values.email_address,
         password: values.password,
-        type: values.type,
-        salary: {
-          monthly_salary: values.monthly_salary,
-          working_days: values.working_days,
-          working_hour: values.working_hour,
-        }
+        type: 'admin',
       }
 
       const headers = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${token}`,
       }
 
       const response = await fetch(`${API_URL}/employe-managment`, {
@@ -155,9 +128,7 @@ const EmployeePage = () => {
         return
       }
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
       const res = await response.json()
 
@@ -166,23 +137,23 @@ const EmployeePage = () => {
         reset()
         await ReactSwal.fire({
           title: 'Success!',
-          text: 'Employee added successfully!',
+          text: 'Admin added successfully!',
           icon: 'success',
           confirmButtonText: 'OK',
           confirmButtonColor: '#3085d6',
         })
-        router.push('/employee')
+        router.push('/admin')
       } else {
-        addToast(res.message || 'Error creating employee', { toastClass: 'bg-danger', delay: 3000 })
+        addToast(res.message || 'Error creating admin', { toastClass: 'bg-danger', delay: 3000 })
       }
     } catch (err: any) {
       if (err instanceof Error && err.message.includes('401')) {
         await handleTokenExpired()
       } else {
-        console.error('Error creating employee:', err)
-        addToast(err?.message || 'Something went wrong', { 
-          toastClass: 'bg-danger', 
-          delay: 3000 
+        console.error('Error creating admin:', err)
+        addToast(err?.message || 'Something went wrong', {
+          toastClass: 'bg-danger',
+          delay: 3000,
         })
       }
     }
@@ -203,24 +174,24 @@ const EmployeePage = () => {
     <Fragment>
       <Toaster toasts={toasts} addToast={addToast} removeToast={removeToast} />
       <Container fluid className="px-2 px-sm-3">
-        <PageBreadcrumb title="Add Employee" subtitle="Employee List" subtitleLink="/employee" />
+        <PageBreadcrumb title="Add Admin" subtitle="Admin List" subtitleLink="/admin" />
         <Row className="justify-content-center mt-3">
           <Col xs={12} lg={10} xl={8}>
             <Card>
               <Card.Header>
-                <Card.Title as="h5">Add New Employee</Card.Title>
+                <Card.Title as="h5">Add New Admin</Card.Title>
               </Card.Header>
               <Card.Body className="p-3 p-sm-4">
                 <Form onSubmit={handleSubmit(onSubmit)}>
                   <Row>
-                    <Col xs={12} md={6}>
-                      {/* Employee Name */}
+                    <Col xs={12}>
+                      {/* Admin Name */}
                       <div className="mb-3">
-                        <FormLabel>Employee Name <span className="text-danger">*</span></FormLabel>
+                        <FormLabel>Admin Name <span className="text-danger">*</span></FormLabel>
                         <FormControl
                           type="text"
                           {...register('name')}
-                          placeholder="Enter employee name"
+                          placeholder="Enter admin name"
                           isInvalid={!!errors.name}
                         />
                         <Form.Control.Feedback type="invalid">
@@ -258,88 +229,12 @@ const EmployeePage = () => {
                           {errors.password?.message as string}
                         </Form.Control.Feedback>
                       </div>
-
-                      {/* Employee Type */}
-                      <div className="mb-3">
-                        <FormLabel>Employee Type <span className="text-danger">*</span></FormLabel>
-                        <Controller
-                          name="type"
-                          control={control}
-                          render={({ field }) => (
-                            <Select
-                              {...field}
-                              options={employeeTypes}
-                              value={employeeTypes.find(opt => opt.value === field.value) || null}
-                              onChange={option => field.onChange(option?.value)}
-                              placeholder="Select Employee Type"
-                              isInvalid={!!errors.type}
-                            />
-                          )}
-                        />
-                        {errors.type && <p className="text-danger mt-1 mb-0">{errors.type.message as string}</p>}
-                      </div>
-                    </Col>
-
-                    <Col xs={12} md={6}>
-                      {/* Salary Fields */}
-                      <div className="mb-3">
-                        <FormLabel>Monthly Salary <span className="text-danger">*</span></FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('monthly_salary')}
-                          placeholder="Enter monthly salary"
-                          isInvalid={!!errors.monthly_salary}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.monthly_salary?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      <div className="mb-3">
-                        <FormLabel>Working Days per Month <span className="text-danger">*</span></FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('working_days')}
-                          placeholder="Enter working days"
-                          min="1"
-                          max="31"
-                          isInvalid={!!errors.working_days}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.working_days?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      <div className="mb-3">
-                        <FormLabel>Working Hours per Day <span className="text-danger">*</span></FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('working_hour')}
-                          placeholder="Enter working hours"
-                          min="1"
-                          max="24"
-                          isInvalid={!!errors.working_hour}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.working_hour?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      {/* Optional Note */}
-                      <Card className="bg-light">
-                        <Card.Body>
-                          <h6>Note:</h6>
-                          <p className="mb-0 text-muted">
-                            Salary information is required for all employees. Make sure to enter accurate salary details.
-                          </p>
-                        </Card.Body>
-                      </Card>
                     </Col>
                   </Row>
 
                   <div className="d-grid mt-3">
                     <Button type="submit" disabled={formState.isSubmitting} size="lg">
-                      {formState.isSubmitting ? 'Creating Employee...' : 'Create Employee'}
+                      {formState.isSubmitting ? 'Creating Admin...' : 'Create Admin'}
                     </Button>
                   </div>
                 </Form>
@@ -355,7 +250,7 @@ const EmployeePage = () => {
 const Page = () => {
   return (
     <ProtectedRoute>
-      <EmployeePage />
+      <AddAdminPage />
     </ProtectedRoute>
   )
 }

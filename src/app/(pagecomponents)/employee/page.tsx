@@ -3,11 +3,9 @@
 import ComponentCard from '@/components/cards/ComponentCard'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Card, Col, Container, Row } from 'react-bootstrap'
-
 import DT from 'datatables.net-bs5'
 import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
-
 import ReactDOMServer from 'react-dom/server'
 import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
 import { Fragment, useEffect, useRef, useState } from 'react'
@@ -17,41 +15,19 @@ import { useRouter } from 'next/navigation'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState } from '@/store'
 import { setToken, clearToken } from '@/store/authSlice'
-import { jwtDecode } from 'jwt-decode' 
-import { delete_ } from '@/lib/requests'
-import ProtectedRoute from '@/components/ProtectedRoute' 
+import ProtectedRoute from '@/components/ProtectedRoute'
+import { appTitle } from '@/helpers'
+import { jwtDecode } from 'jwt-decode'
+import $ from 'jquery';
 
 const BasicTable = () => {
   DataTable.use(DT)
-  const table = useRef<any>(null)
+  const table = useRef<HTMLTableElement>(null)
+  const [dataTable, setDataTable] = useState<any>(null)
   const router = useRouter()
   const dispatch = useDispatch()
-  const [isTokenValid, setIsTokenValid] = useState(true)
   const [employees, setEmployees] = useState<any[]>([])
-
- 
-  useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      if (parsed.token) {
-        dispatch(setToken(parsed.token))
-      
-        try {
-          const decoded: any = jwtDecode(parsed.token)
-          const currentTime = Date.now() / 1000
-          if (decoded.exp < currentTime) {
-            console.log('Token expired')
-            setIsTokenValid(false)
-            handleTokenExpired()
-          }
-        } catch (error) {
-          console.error('Invalid token:', error)
-          setIsTokenValid(false)
-        }
-      }
-    }
-  }, [dispatch])
+  const [isLoading, setIsLoading] = useState(true)
 
   const token = useSelector((state: RootState) => state.auth.token)
   const tokenPayload = token ? jwtDecode<any>(token) : null
@@ -59,44 +35,13 @@ const BasicTable = () => {
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-  useEffect(() => {
-    if (isTokenValid) {
-      fetchEmployees()
-    }
-  }, [isTokenValid])
-
-  const fetchEmployees = async () => {
+  const validateToken = (token: string): boolean => {
     try {
-      console.log('Fetching employees...')
-      
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      }
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
-
-      const response = await fetch(`${API_URL}/employe-managment`, {
-        method: 'GET',
-        headers,
-      })
-
-      if (response.status === 401) {
-        setIsTokenValid(false)
-        await handleTokenExpired()
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log('Fetched employees:', data)
-      setEmployees(data)
+      const decoded: any = jwtDecode(token)
+      const currentTime = Date.now() / 1000
+      return decoded.exp > currentTime
     } catch (error) {
-      console.error('Error fetching employees:', error)
+      return false
     }
   }
 
@@ -106,99 +51,185 @@ const BasicTable = () => {
       title: 'Session Expired',
       text: 'Your session has expired. Please login again.',
       confirmButtonText: 'Login',
+      allowOutsideClick: false,
     })
     
-   
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
   }
 
-  const options = {
-    responsive: true,
-    serverSide: false,
-    processing: true,
-    data: employees, 
-    language: {
-      paginate: {
-        first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
-        previous: ReactDOMServer.renderToStaticMarkup(<TbChevronLeft className="fs-lg" />),
-        next: ReactDOMServer.renderToStaticMarkup(<TbChevronRight className="fs-lg" />),
-        last: ReactDOMServer.renderToStaticMarkup(<TbChevronsRight className="fs-lg" />),
-      },
-      emptyTable: 'No employees found',
-      zeroRecords: 'No matching records found',
-    },
-    columns: [
-      { title: 'Name', data: 'name' },
-      { title: 'E-Mail Address', data: 'email_address' },
-      { title: 'Type', data: 'type' },
-      { title: 'Reference Number', data: 'reference_number' },
-      { title: 'Reference Date', data: 'reference_date' },
-      { title: 'Created At', data: 'createdAt' },
-      { title: 'Updated At', data: 'updatedAt' },
-      {
-        title: 'Actions',
-        data: 'id',
-        orderable: false,
-        searchable: false,
-        render: function (data: string) {
-          return `
-            <div class="d-flex gap-2">
-              <a href='/employee/edit/${data}' class="btn btn-sm btn-soft-primary btn-edit">Edit</a>
-              <button type="button" data-id="${data}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
-              <button type="button" data-id="${data}" class="btn btn-sm btn-soft-info btn-view">View</button>
-            </div>
-          `
-        },
-      },
-    ],
-    drawCallback: function () {
-     
-    },
-    initComplete: function () {
-      console.log('DataTable initialized')
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (token && validateToken(token)) {
+        setIsLoading(false)
+        return
+      }
+
+      const stored = localStorage.getItem('user')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed.token && validateToken(parsed.token)) {
+          dispatch(setToken(parsed.token))
+          setIsLoading(false)
+          return
+        }
+      }
+
+      await handleTokenExpired()
     }
-  }
+
+    checkAuth()
+  }, [dispatch, token])
 
   useEffect(() => {
-    const handleClick = async (e: any) => {
-      const target = e.target
+    document.title = `${appTitle} Employee Management`
+  }, [])
 
+  useEffect(() => {
+    if (token && validateToken(token)) {
+      fetchEmployees()
+    }
+  }, [token])
+
+  const fetchEmployees = async () => {
+    try {
+      setIsLoading(true)
       
-      if (!isTokenValid) {
-        e.preventDefault()
+      if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
       }
 
-      if (!isAdmin && (target.classList.contains('btn-edit') || target.classList.contains('btn-delete') || target.classList.contains('btn-view'))) {
-        e.preventDefault()
-        await Swal.fire({
-          icon: 'warning',
-          title: 'Access Denied',
-          text: 'You are not admin. Only admin can access this functionality.',
-        })
+      const headers = { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+
+      const response = await fetch(`${API_URL}/employe-managment`, { 
+        method: 'GET', 
+        headers 
+      })
+      
+      if (response.status === 401) {
+        await handleTokenExpired()
         return
       }
+      
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
-      if (isAdmin) {
-        if (target.classList.contains('btn-delete')) handleDelete(e)
-        if (target.classList.contains('btn-view')) handleView(e)
+      const data = await response.json()
+      const filteredEmployees = data.filter((emp: any) => emp.type !== 'admin')
+      
+      setEmployees(filteredEmployees)
+
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('401')) {
+        await handleTokenExpired()
       }
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    document.addEventListener('click', handleClick)
-    return () => document.removeEventListener('click', handleClick)
-  }, [isAdmin, isTokenValid, router])
+  useEffect(() => {
+    if (employees.length > 0 && table.current && !dataTable) {
+      const dt = $(table.current).DataTable({
+        responsive: true,
+        serverSide: false,
+        processing: true,
+        data: employees,
+        destroy: true,
+        language: {
+          paginate: {
+            first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
+            previous: ReactDOMServer.renderToStaticMarkup(<TbChevronLeft className="fs-lg" />),
+            next: ReactDOMServer.renderToStaticMarkup(<TbChevronRight className="fs-lg" />),
+            last: ReactDOMServer.renderToStaticMarkup(<TbChevronsRight className="fs-lg" />),
+          },
+          emptyTable: 'No employees found',
+          zeroRecords: 'No matching records found',
+        },
+        columns: [
+          { title: 'Name', data: 'name' },
+          { title: 'E-Mail Address', data: 'email_address' },
+          { title: 'Type', data: 'type' },
+          { title: 'Reference Number', data: 'reference_number' },
+          { title: 'Reference Date', data: 'reference_date' },
+          { title: 'Created At', data: 'createdAt' },
+          { title: 'Updated At', data: 'updatedAt' },
+          {
+            title: 'Actions',
+            data: null,
+            orderable: false,
+            searchable: false,
+            render: function (data: any, type: any, row: any) {
+              const htmlString = `
+                <div class="d-flex gap-2">
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-info btn-view">View</button>
+                </div>
+              `;
+              return htmlString;
+            },
+          },
+        ],
+        drawCallback: function () {
+          // DataTable redraw होने के बाद event listeners attach करें
+          $(this.api().table().body()).find('.btn-edit, .btn-delete, .btn-view').off('click').on('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const id = $(this).data('id');
+            const buttonType = $(this).hasClass('btn-edit') ? 'edit' : 
+                             $(this).hasClass('btn-delete') ? 'delete' : 'view';
+            
+            handleTableButtonClick(id, buttonType);
+          });
+        }
+      })
+      setDataTable(dt)
+    }
+  }, [employees, dataTable])
 
-  const handleDelete = async (e: any) => {
-    if (!isTokenValid) {
+  // Table button click handler
+  const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
+    console.log('🎯 Button clicked with ID:', id, 'Type:', type);
+
+    if (!token || !validateToken(token)) {
       await handleTokenExpired()
       return
     }
 
-    const id = e.target.getAttribute('data-id')
+    if (!isAdmin) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Access Denied',
+        text: 'You are not admin. Only admin can access this functionality.',
+      })
+      return
+    }
+
+    if (type === 'delete') {
+      await handleDelete(id)
+    } else if (type === 'view') {
+      router.push(`/employee/view/${id}`)
+    } else if (type === 'edit') {
+      console.log('🚀 Navigating to edit page with ID:', id)
+      router.push(`/employee/edit/${id}`)
+    }
+  }
+
+  useEffect(() => {
+    if (dataTable && employees.length > 0) {
+      dataTable.clear()
+      dataTable.rows.add(employees)
+      dataTable.draw()
+    }
+  }, [employees, dataTable])
+
+  const handleDelete = async (id: string) => {
     const result = await Swal.fire({
       title: 'Are you sure?',
       text: "You won't be able to revert this!",
@@ -211,12 +242,9 @@ const BasicTable = () => {
 
     if (result.isConfirmed) {
       try {
-        const headers: HeadersInit = {
+        const headers = { 
           'Content-Type': 'application/json',
-        }
-        
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`
+          'Authorization': `Bearer ${token}`
         }
 
         const response = await fetch(`${API_URL}/employe-managment/${id}`, {
@@ -225,54 +253,48 @@ const BasicTable = () => {
         })
 
         if (response.status === 401) {
-          setIsTokenValid(false)
           await handleTokenExpired()
           return
         }
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
-        Swal.fire('Deleted!', 'Employee has been deleted.', 'success').then(() => {
+        setEmployees(prev => prev.filter(emp => emp.id !== id))
+        await Swal.fire('Deleted!', 'Employee has been deleted.', 'success')
         
-          fetchEmployees()
-        })
       } catch (error) {
         Swal.fire('Error!', 'Failed to delete employee.', 'error')
+        fetchEmployees()
       }
     }
   }
 
-  const handleView = (e: any) => {
-    if (!isTokenValid) {
-      handleTokenExpired()
-      return
+  useEffect(() => {
+    return () => {
+      if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
+        dataTable.destroy(true)
+        setDataTable(null)
+      }
     }
-
-    const id = e.target.getAttribute('data-id')
-    router.push(`/employee/view/${id}`)
-  }
+  }, [dataTable])
 
   return (
     <ComponentCard title="Employee List">
-      {!isTokenValid && (
-        <div className="alert alert-warning mb-3">
-          <i className="mdi mdi-alert-circle-outline me-2"></i>
-          Your session has expired. Please login again to continue.
-        </div>
-      )}
-      
-      {/* Simple table agar DataTable kaam na kare */}
-      {employees.length === 0 ? (
+      {isLoading ? (
         <div className="text-center p-4">
-          <p>Loading employees...</p>
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="mt-2">Loading employees...</p>
+        </div>
+      ) : employees.length === 0 ? (
+        <div className="text-center p-4">
+          <p>No employees found.</p>
         </div>
       ) : (
-        <DataTable
+        <table
           ref={table}
-          options={options}
-          className="table table-striped dt-responsive align-middle mb-0"
+          className="table table-striped dt-responsive align-middle mb-0 w-100"
         >
           <thead className="thead-sm text-uppercase fs-xxs">
             <tr>
@@ -286,7 +308,7 @@ const BasicTable = () => {
               <th>Actions</th>
             </tr>
           </thead>
-        </DataTable>
+        </table>
       )}
     </ComponentCard>
   )

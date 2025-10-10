@@ -1,258 +1,331 @@
 'use client'
 
-import { useEffect, Fragment } from 'react'
-import { useRouter } from 'next/navigation'
-import { useForm, Controller } from 'react-hook-form'
-import { yupResolver } from '@hookform/resolvers/yup'
-import * as Yup from 'yup'
-import { Container, Card, Form, FormLabel, FormControl, Button, Row, Col } from 'react-bootstrap'
-import Select from 'react-select'
+import ComponentCard from '@/components/cards/ComponentCard'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
-import { useToasts } from '@/components/helper/useToasts'
-import Toaster from '@/components/helper/toaster'
+import { Card, Col, Container, Row } from 'react-bootstrap'
+import DT from 'datatables.net-bs5'
+import DataTable from 'datatables.net-react'
+import 'datatables.net-responsive'
+import ReactDOMServer from 'react-dom/server'
+import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import Swal from 'sweetalert2'
-import withReactContent from 'sweetalert2-react-content'
-import { useSelector } from 'react-redux'
+import { useRouter } from 'next/navigation'
+import { useSelector, useDispatch } from 'react-redux'
 import { RootState } from '@/store'
+import { setToken, clearToken } from '@/store/authSlice'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import { appTitle } from '@/helpers'
+import { jwtDecode } from 'jwt-decode'
+import $ from 'jquery'
 
-const ReactSwal = withReactContent(Swal)
-
-const EmployeePage = () => {
+const BasicTable = () => {
+  DataTable.use(DT)
+  const table = useRef<HTMLTableElement>(null)
+  const [dataTable, setDataTable] = useState<any>(null)
   const router = useRouter()
-  const { toasts, addToast, removeToast } = useToasts()
+  const dispatch = useDispatch()
+  const [admins, setAdmins] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
   const token = useSelector((state: RootState) => state.auth.token)
-  const user = useSelector((state: RootState) => state.auth.user)
+  const tokenPayload = token ? jwtDecode<any>(token) : null
+  const isAdmin = tokenPayload?.type === 'admin'
 
-  
-  useEffect(() => {
-    const checkUserAccess = () => {
-      let userType = null
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-     
-      if (user && user.type) {
-        userType = user.type
-      } else {
-        
-        const stored = localStorage.getItem('user')
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored)
-            userType = parsed.type || parsed.user_type
-          } catch (error) {
-            console.error('Error parsing user data:', error)
-          }
-        }
-      }
-
-      
-      if (token && !userType) {
-        try {
-          const tokenParts = token.split('.')
-          if (tokenParts.length === 3) {
-            const payload = JSON.parse(atob(tokenParts[1]))
-            if (payload.type) {
-              userType = payload.type
-            }
-          }
-        } catch (error) {
-          console.error('Error decoding token:', error)
-        }
-      }
-      
-      if (userType && userType.toLowerCase() !== 'admin') {
-        ReactSwal.fire({
-          title: 'Access Denied!',
-          text: 'You do not have permission to access this page.',
-          icon: 'error',
-          confirmButtonText: 'OK',
-        }).then(() => {
-          router.push('/mainDeshbord')
-        })
-      }
-    }
-
-    checkUserAccess()
-  }, [router, token, user])
-
-  const validationSchema = Yup.object().shape({
-    name: Yup.string().required('Employee Name is required'),
-    email_address: Yup.string().email('Invalid email format').required('Email Address is required'),
-    password: Yup.string()
-      .min(8, 'Password must be at least 8 characters')
-      .matches(
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/,
-        'Password must contain uppercase, lowercase, number and special character'
-      )
-      .required('Password is required'),
-  })
-
-  const { register, handleSubmit, control, formState, reset } = useForm({
-    resolver: yupResolver(validationSchema),
-  })
-  const { errors } = formState
-
-  const onSubmit = async (values: any) => {
+  const validateToken = (token: string): boolean => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
-      
-      const payload = {
-        name: values.name,
-        email_address: values.email_address,
-        password: values.password,
-        type: "admin",
-      }
-
-      console.log('Sending payload:', payload)
-
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      }
-
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      } else {
-        const stored = localStorage.getItem('user')
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          if (parsed.token) {
-            headers['Authorization'] = `Bearer ${parsed.token}`
-          }
-        }
-      }
-
-      console.log('Request headers:', headers)
-
-      const response = await fetch(`${API_URL}/employe-managment`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      })
-
-      if (response.status === 401) {
-        addToast('Session expired. Please login again.', { toastClass: 'bg-danger', delay: 3000 })
-        router.push('/login')
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const res = await response.json()
-      console.log('Response:', res)
-
-      if (res.status === true) {
-        addToast(res.message, { toastClass: 'bg-success', delay: 3000 })
-        reset()
-        await ReactSwal.fire({
-          title: 'Success!',
-          text: 'Employee added successfully!',
-          icon: 'success',
-          confirmButtonText: 'OK',
-        })
-      } else {
-        addToast(res.message || 'Error creating employee', { toastClass: 'bg-danger', delay: 3000 })
-      }
-    } catch (err: any) {
-      console.error('Error creating employee:', err)
-      addToast(err?.message || 'Something went wrong', { 
-        toastClass: 'bg-danger', 
-        delay: 3000 
-      })
+      const decoded: any = jwtDecode(token)
+      const currentTime = Date.now() / 1000
+      return decoded.exp > currentTime
+    } catch (error) {
+      return false
     }
   }
 
+  const handleTokenExpired = async () => {
+    await Swal.fire({
+      icon: 'warning',
+      title: 'Session Expired',
+      text: 'Your session has expired. Please login again.',
+      confirmButtonText: 'Login',
+      allowOutsideClick: false,
+    })
+
+    dispatch(clearToken())
+    localStorage.removeItem('user')
+    router.push('/login')
+  }
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (token && validateToken(token)) {
+        setIsLoading(false)
+        return
+      }
+
+      const stored = localStorage.getItem('user')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed.token && validateToken(parsed.token)) {
+          dispatch(setToken(parsed.token))
+          setIsLoading(false)
+          return
+        }
+      }
+
+      await handleTokenExpired()
+    }
+
+    checkAuth()
+  }, [dispatch, token])
+
+  useEffect(() => {
+    document.title = `${appTitle}Admin Management`
+  }, [])
+
+  useEffect(() => {
+    if (token && validateToken(token)) {
+      fetchAdmins()
+    }
+  }, [token])
+
+  const fetchAdmins = async () => {
+    try {
+      setIsLoading(true)
+
+      if (!token || !validateToken(token)) {
+        await handleTokenExpired()
+        return
+      }
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+
+      const response = await fetch(`${API_URL}/employe-managment`, {
+        method: 'GET',
+        headers
+      })
+
+      if (response.status === 401) {
+        await handleTokenExpired()
+        return
+      }
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+      const data = await response.json()
+      const filteredAdmins = data.filter((emp: any) => emp.type === 'admin')
+
+      setAdmins(filteredAdmins)
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('401')) {
+        await handleTokenExpired()
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!token || !validateToken(token)) {
+      await handleTokenExpired()
+      return
+    }
+
+    if (!isAdmin) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Access Denied',
+        text: 'Only admin can delete other admins.',
+      })
+      return
+    }
+
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: "You won't be able to revert this!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Yes, delete it!',
+    })
+
+    if (result.isConfirmed) {
+      try {
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+
+        const response = await fetch(`${API_URL}/employe-managment/${id}`, {
+          method: 'DELETE',
+          headers,
+        })
+
+        if (response.status === 401) {
+          await handleTokenExpired()
+          return
+        }
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+        setAdmins(prev => prev.filter(admin => admin.id !== id))
+        await Swal.fire('Deleted!', 'Admin has been deleted.', 'success')
+      } catch (error) {
+        Swal.fire('Error!', 'Failed to delete admin.', 'error')
+        fetchAdmins()
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (admins.length > 0 && table.current && !dataTable) {
+      const dt = $(table.current).DataTable({
+        responsive: true,
+        serverSide: false,
+        processing: true,
+        data: admins,
+        destroy: true,
+        language: {
+          paginate: {
+            first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
+            previous: ReactDOMServer.renderToStaticMarkup(<TbChevronLeft className="fs-lg" />),
+            next: ReactDOMServer.renderToStaticMarkup(<TbChevronRight className="fs-lg" />),
+            last: ReactDOMServer.renderToStaticMarkup(<TbChevronsRight className="fs-lg" />),
+          },
+          emptyTable: 'No admins found',
+          zeroRecords: 'No matching records found',
+        },
+        columns: [
+          { title: 'Name', data: 'name' },
+          { title: 'E-Mail Address', data: 'email_address' },
+          { title: 'Type', data: 'type' },
+          { title: 'Reference Number', data: 'reference_number' },
+          { title: 'Reference Date', data: 'reference_date' },
+          { title: 'Created At', data: 'createdAt' },
+          { title: 'Updated At', data: 'updatedAt' },
+          {
+            title: 'Actions',
+            data: null,
+            orderable: false,
+            searchable: false,
+            render: function (data: any, type: any, row: any) {
+              return `
+                <div class="d-flex gap-2">
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
+                </div>
+              `
+            },
+          },
+        ],
+        drawCallback: function () {
+          $(this.api().table().body()).find('.btn-delete').off('click').on('click', function (e) {
+            e.preventDefault()
+            const id = $(this).data('id')
+            handleDelete(id)
+          })
+        },
+      })
+      setDataTable(dt)
+    }
+  }, [admins, dataTable])
+
+  useEffect(() => {
+    if (dataTable && admins.length > 0) {
+      dataTable.clear()
+      dataTable.rows.add(admins)
+      dataTable.draw()
+    }
+  }, [admins, dataTable])
+
+  
+  useEffect(() => {
+    return () => {
+      try {
+        if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
+          dataTable.destroy(true)
+          setDataTable(null)
+        }
+      } catch (e) {
+        console.warn("DataTable destroy skipped to prevent removeChild error:", e)
+      }
+    }
+  }, [dataTable])
+
   return (
-    <Fragment>
-      <Toaster toasts={toasts} addToast={addToast} removeToast={removeToast} />
-      <Container fluid className="px-2 px-sm-3 px-md-4">
-        <PageBreadcrumb title="Add Employee" subtitle="Employee List" />
-        <Row className="justify-content-center mt-2 mt-sm-3 mt-md-4">
-          <Col xs={12} sm={12} md={11} lg={10} xl={8}>
-            <Card className="shadow-sm">
-              <Card.Header className="bg-white border-bottom">
-                <Card.Title as="h5" className="mb-0 py-2">Add New Employee</Card.Title>
-              </Card.Header>
-              <Card.Body className="p-3 p-sm-4 p-md-5">
-                <Form onSubmit={handleSubmit(onSubmit)}>
-                  <Row>
-                    <Col xs={12}>
-                      {/* Employee Name */}
-                      <div className="mb-3 mb-md-4">
-                        <FormLabel className="fw-semibold">
-                          Employee Name <span className="text-danger">*</span>
-                        </FormLabel>
-                        <FormControl
-                          type="text"
-                          {...register('name')}
-                          placeholder="Enter employee name"
-                          isInvalid={!!errors.name}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.name?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      {/* Email */}
-                      <div className="mb-3 mb-md-4">
-                        <FormLabel className="fw-semibold">
-                          Email Address <span className="text-danger">*</span>
-                        </FormLabel>
-                        <FormControl
-                          type="email"
-                          {...register('email_address')}
-                          placeholder="Enter email address"
-                          isInvalid={!!errors.email_address}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.email_address?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      {/* Password */}
-                      <div className="mb-3 mb-md-4">
-                        <FormLabel className="fw-semibold">
-                          Password <span className="text-danger">*</span>
-                        </FormLabel>
-                        <FormControl
-                          type="password"
-                          {...register('password')}
-                          placeholder="Enter password"
-                          isInvalid={!!errors.password}
-                        />
-                        <Form.Text className="text-muted d-block mt-2 small">
-                          At least 8 characters, include uppercase, lowercase, number & special character
-                        </Form.Text>
-                        <Form.Control.Feedback type="invalid">
-                          {errors.password?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-                    </Col>
-                  </Row>
-
-                  <div className="d-grid gap-2 mt-3 mt-md-4">
-                    <Button 
-                      type="submit" 
-                      disabled={formState.isSubmitting}
-                    >
-                      {formState.isSubmitting ? 'Creating Admin...' : 'Create Admin'}
-                    </Button>
-                  </div>
-                </Form>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-      </Container>
-    </Fragment>
+    <ComponentCard title="Admin List">
+      {isLoading ? (
+        <div className="text-center p-4">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="mt-2">Loading admins...</p>
+        </div>
+      ) : admins.length === 0 ? (
+        <div className="text-center p-4">
+          <p>No admins found.</p>
+        </div>
+      ) : (
+        <table
+          ref={table}
+          className="table table-striped dt-responsive align-middle mb-0 w-100"
+        >
+          <thead className="thead-sm text-uppercase fs-xxs">
+            <tr>
+              <th>Name</th>
+              <th>E-Mail Address</th>
+              <th>Type</th>
+              <th>Reference Number</th>
+              <th>Reference Date</th>
+              <th>Created At</th>
+              <th>Updated At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+        </table>
+      )}
+    </ComponentCard>
   )
 }
+
+const PageContent = () => (
+  <Fragment>
+    <Container fluid className="px-2 px-sm-3">
+      <PageBreadcrumb title="Admin List" />
+      <Row className="justify-content-center mt-3">
+        <Col xs={12}>
+          <Card className="mb-3">
+            <Card.Body className="p-3 p-sm-4">
+              <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2">
+                <div>
+                  <h5 className="card-title mb-1">Manage Admins</h5>
+                  <p className="text-muted mb-0 small">Delete admins from system</p>
+                </div>
+                <Link href="/admin/add" className="btn btn-primary">
+                  <i className="mdi mdi-plus me-1"></i>Add Admin
+                </Link>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col xs={12}>
+          <BasicTable />
+        </Col>
+      </Row>
+    </Container>
+  </Fragment>
+)
 
 const Page = () => {
   return (
     <ProtectedRoute>
-      <EmployeePage />
+      <PageContent />
     </ProtectedRoute>
   )
 }

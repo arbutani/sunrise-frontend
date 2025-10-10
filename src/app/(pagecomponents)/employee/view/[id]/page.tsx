@@ -9,45 +9,110 @@ import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
 
 import ReactDOMServer from 'react-dom/server'
-import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight, TbArrowLeft } from 'react-icons/tb'
+import {
+  TbChevronLeft,
+  TbChevronRight,
+  TbChevronsLeft,
+  TbChevronsRight,
+} from 'react-icons/tb'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
+import Swal from 'sweetalert2'
+import { jwtDecode } from 'jwt-decode'
 
-import { setToken } from '@/store/authSlice'
+import { setToken, clearToken } from '@/store/authSlice'
+import { RootState } from '@/store'
+import ProtectedRoute from '@/components/ProtectedRoute'
+import { appTitle } from '@/helpers'
 
-import { get } from '@/lib/requests'
-import ProtectedRoute from '@/components/ProtectedRoute' // ✅ ProtectedRoute import karo
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-const EmployeeDetailsCard = ({ employeeId }: { employeeId: string }) => {
+
+const validateToken = (token: string): boolean => {
+  try {
+    const decoded: any = jwtDecode(token)
+    const currentTime = Date.now() / 1000
+    return decoded.exp > currentTime
+  } catch (error) {
+    return false
+  }
+}
+
+
+const EmployeeDetailsCard = ({ 
+  employeeId, 
+  token, 
+  onTokenExpired 
+}: { 
+  employeeId: string
+  token: string | null
+  onTokenExpired: () => Promise<void>
+}) => {
   const [employeeData, setEmployeeData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
+    document.title = `${appTitle}Salary Details`
+  }, [])
+
+  useEffect(() => {
     const fetchEmployeeDetails = async () => {
       try {
-        const response = await get(`employe-managment/${employeeId}`, true)
-        if (response.data && response.data.data) {
-          setEmployeeData(response.data.data)
+        if (!token || !validateToken(token)) {
+          await onTokenExpired()
+          return
+        }
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+
+        const response = await fetch(`${API_URL}/employe-managment/${employeeId}`, {
+          method: 'GET',
+          headers
+        })
+
+        if (response.status === 401) {
+          await onTokenExpired()
+          return
+        }
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+        const data = await response.json()
+        if (data && data.data) {
+          setEmployeeData(data.data)
         }
       } catch (error) {
-        console.error('Error fetching employee details:', error)
+        if (error instanceof Error && error.message.includes('401')) {
+          await onTokenExpired()
+        } else {
+          console.error('Error fetching employee details:', error)
+          Swal.fire('Error!', 'Failed to load employee details.', 'error')
+        }
       } finally {
         setLoading(false)
       }
     }
 
-    if (employeeId) {
+    if (employeeId && token) {
       fetchEmployeeDetails()
     }
-  }, [employeeId])
+  }, [employeeId, token])
 
   if (loading) {
     return (
       <Card className="mb-3">
         <Card.Body>
-          <p className="text-center mb-0">Loading employee details...</p>
+          <div className="text-center p-4">
+            <div className="spinner-border text-primary" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p className="mt-2">Loading employee details...</p>
+          </div>
         </Card.Body>
       </Card>
     )
@@ -61,13 +126,12 @@ const EmployeeDetailsCard = ({ employeeId }: { employeeId: string }) => {
     <Card className="mb-3">
       <Card.Header className="d-flex justify-content-between align-items-center">
         <h5 className="card-title mb-0">Employee Details</h5>
-        <Button 
-          variant="primary" 
+        <Button
+          variant="primary"
           onClick={() => router.push('/employee')}
           className="d-flex align-items-center gap-2"
         >
-          <TbArrowLeft className="fs-lg" />
-          Back to Employees
+          Back
         </Button>
       </Card.Header>
       <Card.Body>
@@ -100,7 +164,16 @@ const EmployeeDetailsCard = ({ employeeId }: { employeeId: string }) => {
   )
 }
 
-const BasicTable = ({ employeeId }: { employeeId: string }) => {
+
+const BasicTable = ({ 
+  employeeId, 
+  token, 
+  onTokenExpired 
+}: { 
+  employeeId: string
+  token: string | null
+  onTokenExpired: () => Promise<void>
+}) => {
   DataTable.use(DT)
   const table = useRef<any>(null)
 
@@ -108,25 +181,62 @@ const BasicTable = ({ employeeId }: { employeeId: string }) => {
     responsive: true,
     language: {
       paginate: {
-        first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
-        previous: ReactDOMServer.renderToStaticMarkup(<TbChevronLeft className="fs-lg" />),
-        next: ReactDOMServer.renderToStaticMarkup(<TbChevronRight className="fs-lg" />),
-        last: ReactDOMServer.renderToStaticMarkup(<TbChevronsRight className="fs-lg" />),
+        first: ReactDOMServer.renderToStaticMarkup(
+          <TbChevronsLeft className="fs-lg" />,
+        ),
+        previous: ReactDOMServer.renderToStaticMarkup(
+          <TbChevronLeft className="fs-lg" />,
+        ),
+        next: ReactDOMServer.renderToStaticMarkup(
+          <TbChevronRight className="fs-lg" />,
+        ),
+        last: ReactDOMServer.renderToStaticMarkup(
+          <TbChevronsRight className="fs-lg" />,
+        ),
       },
+      emptyTable: 'No salary records found',
+      zeroRecords: 'No matching records found',
     },
     processing: true,
     serverSide: false,
     ajax: async (dtData: any, callback: (data: any) => void) => {
       try {
-        if (!employeeId) {
+        if (!employeeId || !token || !validateToken(token)) {
+          if (!validateToken(token || '')) {
+            await onTokenExpired()
+          }
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
           return
         }
-        const url = `employee-salary/employee/${employeeId}`
-        const response = await get(url, true)
-        const apiData = response.data
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+
+        const response = await fetch(`${API_URL}/employee-salary/employee/${employeeId}`, {
+          method: 'GET',
+          headers
+        })
+
+        if (response.status === 401) {
+          await onTokenExpired()
+          callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
+          return
+        }
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+        const apiData = await response.json()
+
         if (apiData && apiData.data) {
-          const salaryData = apiData.data
+         
+          const salaryData = apiData.data.sort(
+            (a: any, b: any) =>
+              new Date(b.createdAt).getTime() -
+              new Date(a.createdAt).getTime(),
+          )
+
           callback({
             draw: 1,
             data: salaryData,
@@ -137,9 +247,15 @@ const BasicTable = ({ employeeId }: { employeeId: string }) => {
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
         }
       } catch (error) {
+        if (error instanceof Error && error.message.includes('401')) {
+          await onTokenExpired()
+        } else {
+          console.error('Error fetching salary data:', error)
+        }
         callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
       }
     },
+    order: [[3, 'desc']],
     columns: [
       { title: 'Monthly Salary', data: 'monthly_salary' },
       { title: 'Working Days', data: 'working_days' },
@@ -150,7 +266,7 @@ const BasicTable = ({ employeeId }: { employeeId: string }) => {
   }
 
   return (
-    <ComponentCard title="Employee Salary Records">
+    <ComponentCard title="Salary Details">
       <DataTable
         ref={table}
         options={options}
@@ -171,33 +287,89 @@ const BasicTable = ({ employeeId }: { employeeId: string }) => {
   )
 }
 
+
 const EmployeeSalaryPage = () => {
   const router = useRouter()
   const dispatch = useDispatch()
   const params = useParams()
   const employeeId = params?.id as string
+  const [isLoading, setIsLoading] = useState(true)
+
+  const token = useSelector((state: RootState) => state.auth.token)
+
+  const handleTokenExpired = async () => {
+    await Swal.fire({
+      icon: 'warning',
+      title: 'Session Expired',
+      text: 'Your session has expired. Please login again.',
+      confirmButtonText: 'Login',
+      allowOutsideClick: false,
+    })
+    
+    dispatch(clearToken())
+    localStorage.removeItem('user')
+    router.push('/login')
+  }
 
   useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      if (parsed.token) {
-        dispatch(setToken(parsed.token))
+    const checkAuth = async () => {
+      if (token && validateToken(token)) {
+        setIsLoading(false)
+        return
       }
+
+      const stored = localStorage.getItem('user')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed.token && validateToken(parsed.token)) {
+          dispatch(setToken(parsed.token))
+          setIsLoading(false)
+          return
+        }
+      }
+
+      await handleTokenExpired()
     }
-  }, [dispatch])
+
+    checkAuth()
+  }, [dispatch, token])
+
+  if (isLoading) {
+    return (
+      <Container fluid>
+        <div className="text-center p-4">
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+          <p className="mt-2">Loading...</p>
+        </div>
+      </Container>
+    )
+  }
 
   return (
     <Fragment>
       <Container fluid>
-        <PageBreadcrumb title="Employee Salary" />
+        <PageBreadcrumb title="Employee Salary" subtitle="Employee List" subtitleLink="/employee" />
       </Container>
 
       <Container fluid>
         <Row className="justify-content-center">
           <Col sm={12}>
-            {employeeId && <EmployeeDetailsCard employeeId={employeeId} />}
-            {employeeId && <BasicTable employeeId={employeeId} />}
+            {employeeId && (
+              <EmployeeDetailsCard 
+                employeeId={employeeId} 
+                token={token}
+                onTokenExpired={handleTokenExpired}
+              />
+            )}
+            {employeeId && (
+              <BasicTable 
+                employeeId={employeeId} 
+                token={token}
+                onTokenExpired={handleTokenExpired}
+              />
+            )}
           </Col>
         </Row>
       </Container>
@@ -205,7 +377,7 @@ const EmployeeSalaryPage = () => {
   )
 }
 
-
+// 🔹 Protected Page Wrapper
 const Page = () => {
   return (
     <ProtectedRoute>
