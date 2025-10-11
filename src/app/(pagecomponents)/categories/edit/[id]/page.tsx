@@ -46,7 +46,7 @@ const EmployeeUpdatePage = () => {
     document.title = `${appTitle}Update Employee`;
   }, []);
 
-  // सिर्फ name field का validation
+  
   const validationSchema = Yup.object().shape({
     name: Yup.string().required('Name is required')
   });
@@ -133,7 +133,7 @@ const EmployeeUpdatePage = () => {
         'Authorization': `Bearer ${token}`
       };
 
-      // API endpoint change किया है
+      
       const response = await fetch(`${API_URL}/categories/${id}`, {
         method: 'GET',
         headers,
@@ -150,8 +150,7 @@ const EmployeeUpdatePage = () => {
 
       if (res.status && res.data) {
         const data = res.data;
-        
-        // सिर्फ name set कर रहे हैं
+      
         reset({
           name: data.name || ''
         });
@@ -188,7 +187,7 @@ const EmployeeUpdatePage = () => {
         return;
       }
 
-      // सिर्फ name data भेज रहे हैं
+
       const putData = {
         name: values.name
       };
@@ -198,7 +197,6 @@ const EmployeeUpdatePage = () => {
         'Authorization': `Bearer ${token}`
       };
 
-      // API endpoint change किया है
       const response = await fetch(`${API_URL}/categories/${employeeId}`, {
         method: 'PUT',
         headers,
