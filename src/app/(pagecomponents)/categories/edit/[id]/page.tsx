@@ -221,7 +221,7 @@ const EmployeeUpdatePage = () => {
           confirmButtonText: 'OK',
           confirmButtonColor: '#3085d6',
         });
-        router.push('/employee');
+        router.push('/categories');
       } else {
         addToast(res.message || 'Update failed.', { toastClass: 'bg-danger', delay: 3000 });
       }
