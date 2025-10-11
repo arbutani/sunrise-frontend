@@ -23,7 +23,6 @@ import { jwtDecode } from 'jwt-decode'
 
 import { setToken, clearToken } from '@/store/authSlice'
 import { RootState } from '@/store'
-import ProtectedRoute from '@/components/ProtectedRoute'
 import { appTitle } from '@/helpers'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
@@ -70,7 +69,7 @@ const EmployeeDetailsCard = ({
           'Authorization': `Bearer ${token}`
         }
 
-        const response = await fetch(`${API_URL}/employe-managment/${employeeId}`, {
+        const response = await fetch(`${API_URL}/employee-management/${employeeId}`, {
           method: 'GET',
           headers
         })
@@ -230,11 +229,9 @@ const BasicTable = ({
         const apiData = await response.json()
 
         if (apiData && apiData.data) {
-         
           const salaryData = apiData.data.sort(
             (a: any, b: any) =>
-              new Date(b.createdAt).getTime() -
-              new Date(a.createdAt).getTime(),
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
           )
 
           callback({
@@ -377,13 +374,4 @@ const EmployeeSalaryPage = () => {
   )
 }
 
-// 🔹 Protected Page Wrapper
-const Page = () => {
-  return (
-    <ProtectedRoute>
-      <EmployeeSalaryPage />
-    </ProtectedRoute>
-  )
-}
-
-export default Page
+export default EmployeeSalaryPage

@@ -2,7 +2,7 @@
 
 import AppLogo from '@/components/AppLogo'
 import { currentYear } from '@/helpers'
-import { Button, Card, Col, Container, Form, FormControl, FormLabel, Row, Toast, ToastBody, ToastContainer } from 'react-bootstrap'
+import { Button, Card, Col, Container, Form, FormControl, FormLabel, Row } from 'react-bootstrap'
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as Yup from 'yup'
 import { useForm } from 'react-hook-form';
@@ -11,31 +11,32 @@ import Toaster from '@/components/helper/toaster';
 import { HandleError } from '@/lib/helper';
 import { useRouter } from 'next/navigation';
 import post from '@/lib/requests';
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 import { setToken } from '@/store/authSlice'
-import { RootState } from '@/store'; 
 import { useEffect, useState } from 'react'
+import { setUserData, getUser } from '@/lib/useUserLocalStorage'
 
 const Page = () => {
   const { toasts, addToast, removeToast } = useToasts();
   const router = useRouter();
   const dispatch = useDispatch()
-  const token = useSelector((state: RootState) => state.auth.token)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  
   useEffect(() => {
-   
-    const timer = setTimeout(() => {
-      if (token) {
-        router.replace('/mainDeshbord')
-      } else {
-        setIsCheckingAuth(false)
-      }
-    }, 100)
-
-    return () => clearTimeout(timer)
-  }, [token, router])
+    // Check if user is already authenticated
+    const token = localStorage.getItem('token');
+    const user = getUser();
+    
+    if (token && user) {
+      // User is already logged in, redirect immediately
+      router.replace('/mainDeshbord');
+    } else {
+      // Clear any stale data
+      localStorage.removeItem('token');
+      setIsCheckingAuth(false);
+    }
+  }, [router])
 
   const validationSchema = Yup.object().shape({
     email: Yup.string().required('E-Mail address is required'),
@@ -43,23 +44,39 @@ const Page = () => {
   });
 
   const formOptions = { resolver: yupResolver(validationSchema) }
-  const { register, handleSubmit, formState, setValue, reset, getValues, setError, clearErrors } = useForm(formOptions)
+  const { register, handleSubmit, formState } = useForm(formOptions)
 
   const { errors, isSubmitting } = formState
 
   const onSubmit = async (formField: any) => {
+    // Prevent multiple submissions
+    if (isLoggingIn) return;
+    
+    setIsLoggingIn(true);
+    
     try {
-      const res = await post("employe-managment/login", formField, true, null, null);
+      const res = await post("employee-management/login", formField, true, null, null);
 
       if (res.data.status === true && res.data.data?.access_token) {
         const token = res.data.data.access_token
-        dispatch(setToken(token))
+        const employee = res.data.data.employee
+        
+        // Save to localStorage first (synchronous)
         localStorage.setItem('token', token)
+        setUserData(employee)
+        
+        // Then update Redux state
+        dispatch(setToken(token))
+        
+        // Show success message
         addToast('Login Success', { toastClass: 'bg-success', delay: 3000 })
         
-      
-        router.replace('/mainDeshbord')
+        // Use window.location for guaranteed redirect (no race condition)
+        setTimeout(() => {
+          window.location.href = '/mainDeshbord'
+        }, 500)
       } else {
+        setIsLoggingIn(false);
         if (Array.isArray(res.data.message)) {
           addToast("All Fields are required.", { toastClass: 'bg-danger', delay: 3000 });
         } else {
@@ -67,11 +84,11 @@ const Page = () => {
         }
       }
     } catch (error) {
+      setIsLoggingIn(false);
       addToast(HandleError(error, router), { toastClass: 'bg-danger', delay: 3000 });
     }
   }
 
-  
   if (isCheckingAuth) {
     return (
       <div className="auth-box overflow-hidden align-items-center d-flex justify-content-center" style={{ minHeight: '100vh' }}>
@@ -227,6 +244,7 @@ const Page = () => {
                     placeholder="you@example.com" 
                     required 
                     isInvalid={!!errors.email}
+                    disabled={isLoggingIn}
                   />
                   {errors.email && (
                     <FormControl.Feedback type="invalid">
@@ -245,6 +263,7 @@ const Page = () => {
                     placeholder="••••••••" 
                     required 
                     isInvalid={!!errors.password}
+                    disabled={isLoggingIn}
                   />
                   {errors.password && (
                     <FormControl.Feedback type="invalid">
@@ -256,10 +275,10 @@ const Page = () => {
                 <div className="d-grid">
                   <Button 
                     type="submit" 
-                    disabled={isSubmitting} 
+                    disabled={isSubmitting || isLoggingIn} 
                     className="btn-primary fw-semibold py-2"
                   >
-                    {isSubmitting ? 'Logging in...' : 'Submit'}
+                    {isLoggingIn ? 'Logging in...' : 'Submit'}
                   </Button>
                 </div>
               </Form>

@@ -16,7 +16,6 @@ import Select from 'react-select';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/store';
 import { setToken, clearToken } from '@/store/authSlice';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { appTitle } from '@/helpers';
 import { jwtDecode } from 'jwt-decode';
 
@@ -56,14 +55,18 @@ const EmployeeUpdatePage = () => {
 
   const validationSchema = Yup.object().shape({
     name: Yup.string().required('Employee Name is required'),
-    email_address: Yup.string().email('Invalid email format').required('Email Address is required'),
+    email_address: Yup.string()
+      .email('Invalid email format')
+      .required('Email Address is required'),
     password: Yup.string()
-      .min(8, 'Password must be at least 8 characters')
-      .matches(
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/,
-        'Password must contain uppercase, lowercase, number and special character'
-      )
-      .optional(),
+      .test(
+        'password-validation',
+        'Password must be at least 8 characters and include uppercase, lowercase, number, and special character',
+        function (value) {
+          if (!value) return true; // ✅ Skip validation if empty
+          return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/.test(value);
+        }
+      ),
     type: Yup.string().required('Employee Type is required'),
     monthly_salary: Yup.number()
       .typeError('Monthly Salary must be a number')
@@ -146,9 +149,7 @@ const EmployeeUpdatePage = () => {
             setIsAuthChecking(false);
             return;
           }
-        } catch (error) {
-          // Silent error handling for production
-        }
+        } catch (error) {}
       }
 
       await handleTokenExpired();
@@ -171,7 +172,7 @@ const EmployeeUpdatePage = () => {
         'Authorization': `Bearer ${token}`
       };
 
-      const response = await fetch(`${API_URL}/employe-managment/${id}`, {
+      const response = await fetch(`${API_URL}/employee-management/${id}`, {
         method: 'GET',
         headers,
       });
@@ -271,7 +272,7 @@ const EmployeeUpdatePage = () => {
         'Authorization': `Bearer ${token}`
       };
 
-      const response = await fetch(`${API_URL}/employe-managment/${employeeId}`, {
+      const response = await fetch(`${API_URL}/employee-management/${employeeId}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify(putData),
@@ -406,7 +407,6 @@ const EmployeeUpdatePage = () => {
                               value={employeeTypes.find(opt => opt.value === field.value) || null}
                               onChange={option => field.onChange(option?.value)}
                               placeholder="Select Employee Type"
-                              isInvalid={!!errors.type}
                             />
                           )}
                         />
@@ -486,9 +486,7 @@ const EmployeeUpdatePage = () => {
 
 const Page = () => {
   return (
-    <ProtectedRoute>
-      <EmployeeUpdatePage />
-    </ProtectedRoute>
+    <EmployeeUpdatePage />
   );
 };
 

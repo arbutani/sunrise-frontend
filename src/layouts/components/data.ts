@@ -3,9 +3,15 @@ import { type IconType } from 'react-icons'
 import { TbBellRinging, TbCreditCard, TbHeadset, TbLock, TbLogout2, TbSettings2, TbUserCircle } from 'react-icons/tb'
 import {
  
+  
+  LuBox,
+  LuBoxes,
   LuCircleGauge,
+  LuContainer,
+  LuCookie,
+  LuUser,
   LuUsers,
-  LuUserX,
+
  
 } from 'react-icons/lu'
 
@@ -34,29 +40,9 @@ export const userDropdownItems: UserDropdownItemType[] = [
     url: '#',
   },
   {
-    label: 'Balance: $985.25',
-    icon: TbCreditCard,
-    url: '#',
-  },
-  {
-    label: 'Account Settings',
-    icon: TbSettings2,
-    url: '#',
-  },
-  {
-    label: 'Support Center',
-    icon: TbHeadset,
-    url: '#',
-  },
-  {
     isDivider: true,
   },
-  {
-    label: 'Lock Screen',
-    icon: TbLock,
-    url: '/auth-1/lock-screen',
-  },
-  {
+ {
     label: 'Log Out',
     icon: TbLogout2,
     url: '#',
@@ -81,9 +67,22 @@ export const menuItems: MenuItemType[] = [
    {
     key: 'admin',
     label: 'Admin',
-    icon: LuUserX,
+    icon: LuUser,
     url: '/admin',
-   }, 
+   },
+   
+   {
+    key: 'dashboards2',
+    label: 'Product Management',
+    icon: LuContainer,
+    badge: { variant: 'success', text: '03' },
+    children: [
+      { key: 'dashboard-v1', label: 'Products List', icon: LuCookie, url: '/product' },
+      { key: 'dashboard-v2', label: 'Categories', icon: LuBox, url: '/categories' },
+      { key: 'dashboard-v3', label: 'SubCategories', icon: LuBoxes, url: '/product' },
+      
+    ],
+  },
  
 ]
 

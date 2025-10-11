@@ -15,10 +15,11 @@ import { useRouter } from 'next/navigation'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState } from '@/store'
 import { setToken, clearToken } from '@/store/authSlice'
-import ProtectedRoute from '@/components/ProtectedRoute'
 import { appTitle } from '@/helpers'
 import { jwtDecode } from 'jwt-decode'
-import $ from 'jquery';
+import $ from 'jquery'
+import { useToasts } from '@/components/helper/useToasts'
+import Toaster from '@/components/helper/toaster'
 
 const BasicTable = () => {
   DataTable.use(DT)
@@ -28,6 +29,7 @@ const BasicTable = () => {
   const dispatch = useDispatch()
   const [employees, setEmployees] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const { toasts, addToast, removeToast } = useToasts()
 
   const token = useSelector((state: RootState) => state.auth.token)
   const tokenPayload = token ? jwtDecode<any>(token) : null
@@ -106,7 +108,7 @@ const BasicTable = () => {
         'Authorization': `Bearer ${token}`
       }
 
-      const response = await fetch(`${API_URL}/employe-managment`, { 
+      const response = await fetch(`${API_URL}/employee-management`, { 
         method: 'GET', 
         headers 
       })
@@ -176,7 +178,6 @@ const BasicTable = () => {
           },
         ],
         drawCallback: function () {
-          // DataTable redraw होने के बाद event listeners attach करें
           $(this.api().table().body()).find('.btn-edit, .btn-delete, .btn-view').off('click').on('click', function (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -193,7 +194,7 @@ const BasicTable = () => {
     }
   }, [employees, dataTable])
 
-  // Table button click handler
+ 
   const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
     console.log('🎯 Button clicked with ID:', id, 'Type:', type);
 
@@ -247,7 +248,7 @@ const BasicTable = () => {
           'Authorization': `Bearer ${token}`
         }
 
-        const response = await fetch(`${API_URL}/employe-managment/${id}`, {
+        const response = await fetch(`${API_URL}/employee-management/${id}`, {
           method: 'DELETE',
           headers,
         })
@@ -260,10 +261,11 @@ const BasicTable = () => {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
         setEmployees(prev => prev.filter(emp => emp.id !== id))
-        await Swal.fire('Deleted!', 'Employee has been deleted.', 'success')
+        
+        addToast('Employee deleted successfully', { toastClass: 'bg-success', delay: 3000 })
         
       } catch (error) {
-        Swal.fire('Error!', 'Failed to delete employee.', 'error')
+        addToast('Failed to delete employee', { toastClass: 'bg-danger', delay: 3000 })
         fetchEmployees()
       }
     }
@@ -279,38 +281,41 @@ const BasicTable = () => {
   }, [dataTable])
 
   return (
-    <ComponentCard title="Employee List">
-      {isLoading ? (
-        <div className="text-center p-4">
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
+    <Fragment>
+      <Toaster toasts={toasts} addToast={addToast} removeToast={removeToast} />
+      <ComponentCard title="Employee List">
+        {isLoading ? (
+          <div className="text-center p-4">
+            <div className="spinner-border text-primary" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+            <p className="mt-2">Loading employees...</p>
           </div>
-          <p className="mt-2">Loading employees...</p>
-        </div>
-      ) : employees.length === 0 ? (
-        <div className="text-center p-4">
-          <p>No employees found.</p>
-        </div>
-      ) : (
-        <table
-          ref={table}
-          className="table table-striped dt-responsive align-middle mb-0 w-100"
-        >
-          <thead className="thead-sm text-uppercase fs-xxs">
-            <tr>
-              <th>Name</th>
-              <th>E-Mail Address</th>
-              <th>Type</th>
-              <th>Reference Number</th>
-              <th>Reference Date</th>
-              <th>Created At</th>
-              <th>Updated At</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-        </table>
-      )}
-    </ComponentCard>
+        ) : employees.length === 0 ? (
+          <div className="text-center p-4">
+            <p>No employees found.</p>
+          </div>
+        ) : (
+          <table
+            ref={table}
+            className="table table-striped dt-responsive align-middle mb-0 w-100"
+          >
+            <thead className="thead-sm text-uppercase fs-xxs">
+              <tr>
+                <th>Name</th>
+                <th>E-Mail Address</th>
+                <th>Type</th>
+                <th>Reference Number</th>
+                <th>Reference Date</th>
+                <th>Created At</th>
+                <th>Updated At</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+          </table>
+        )}
+      </ComponentCard>
+    </Fragment>
   )
 }
 
@@ -343,11 +348,7 @@ const PageContent = () => (
 )
 
 const Page = () => {
-  return (
-    <ProtectedRoute>
-      <PageContent />
-    </ProtectedRoute>
-  )
+  return <PageContent />
 }
 
 export default Page

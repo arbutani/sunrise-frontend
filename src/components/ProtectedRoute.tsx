@@ -1,10 +1,10 @@
-// components/ProtectedRoute.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSelector } from 'react-redux'
 import { RootState } from '@/store'
+import { getUser } from '@/lib/useUserLocalStorage'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -16,21 +16,24 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const [isChecking, setIsChecking] = useState(true)
 
   useEffect(() => {
-    // Check if token exists
     const checkAuth = () => {
-      if (!token) {
+      if (typeof window === 'undefined') return
+      
+      const user = getUser()
+      const localToken = localStorage.getItem('token')
+
+     
+      if ((!token && !localToken) || !user) {
         router.replace('/login')
-      } else {
-        setIsChecking(false)
+        return
       }
+
+      setIsChecking(false)
     }
 
-    // Small delay to ensure Redux state is loaded
-    const timer = setTimeout(checkAuth, 100)
-    return () => clearTimeout(timer)
+    checkAuth()
   }, [token, router])
 
-  // Agar check ho raha hai to loading show karo
   if (isChecking) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
@@ -44,8 +47,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     )
   }
 
-  // Agar token hai to children render karo
-  return token ? <>{children}</> : null
+  return <>{children}</>
 }
 
 export default ProtectedRoute

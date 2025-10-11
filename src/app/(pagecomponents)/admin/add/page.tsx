@@ -14,15 +14,12 @@ import withReactContent from 'sweetalert2-react-content'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState } from '@/store'
 import { setToken, clearToken } from '@/store/authSlice'
-import ProtectedRoute from '@/components/ProtectedRoute'
 import { appTitle } from '@/helpers'
 import { jwtDecode } from 'jwt-decode'
-
 
 const ReactSwal = withReactContent(Swal)
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-// Token validation helper
 const validateToken = (token: string): boolean => {
   try {
     const decoded: any = jwtDecode(token)
@@ -117,7 +114,7 @@ const AddAdminPage = () => {
         'Authorization': `Bearer ${token}`,
       }
 
-      const response = await fetch(`${API_URL}/employe-managment`, {
+      const response = await fetch(`${API_URL}/employee-management`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -187,7 +184,9 @@ const AddAdminPage = () => {
                     <Col xs={12}>
                       {/* Admin Name */}
                       <div className="mb-3">
-                        <FormLabel>Admin Name <span className="text-danger">*</span></FormLabel>
+                        <FormLabel>
+                          Admin Name <span className="text-danger">*</span>
+                        </FormLabel>
                         <FormControl
                           type="text"
                           {...register('name')}
@@ -201,7 +200,9 @@ const AddAdminPage = () => {
 
                       {/* Email */}
                       <div className="mb-3">
-                        <FormLabel>Email Address <span className="text-danger">*</span></FormLabel>
+                        <FormLabel>
+                          Email Address <span className="text-danger">*</span>
+                        </FormLabel>
                         <FormControl
                           type="email"
                           {...register('email_address')}
@@ -215,7 +216,9 @@ const AddAdminPage = () => {
 
                       {/* Password */}
                       <div className="mb-3">
-                        <FormLabel>Password <span className="text-danger">*</span></FormLabel>
+                        <FormLabel>
+                          Password <span className="text-danger">*</span>
+                        </FormLabel>
                         <FormControl
                           type="password"
                           {...register('password')}
@@ -248,11 +251,7 @@ const AddAdminPage = () => {
 }
 
 const Page = () => {
-  return (
-    <ProtectedRoute>
-      <AddAdminPage />
-    </ProtectedRoute>
-  )
+  return <AddAdminPage />
 }
 
 export default Page

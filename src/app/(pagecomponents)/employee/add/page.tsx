@@ -15,7 +15,6 @@ import withReactContent from 'sweetalert2-react-content'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState } from '@/store'
 import { setToken, clearToken } from '@/store/authSlice'
-import ProtectedRoute from '@/components/ProtectedRoute'
 import { appTitle } from '@/helpers'
 import { jwtDecode } from 'jwt-decode'
 
@@ -23,7 +22,6 @@ const ReactSwal = withReactContent(Swal)
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-// Token validation function
 const validateToken = (token: string): boolean => {
   try {
     const decoded: any = jwtDecode(token)
@@ -144,7 +142,7 @@ const EmployeePage = () => {
         'Authorization': `Bearer ${token}`
       }
 
-      const response = await fetch(`${API_URL}/employe-managment`, {
+      const response = await fetch(`${API_URL}/employee-management`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -352,12 +350,4 @@ const EmployeePage = () => {
   )
 }
 
-const Page = () => {
-  return (
-    <ProtectedRoute>
-      <EmployeePage />
-    </ProtectedRoute>
-  )
-}
-
-export default Page
+export default EmployeePage

@@ -27,7 +27,7 @@ const BasicTable = () => {
   const [dataTable, setDataTable] = useState<any>(null)
   const router = useRouter()
   const dispatch = useDispatch()
-  const [admins, setAdmins] = useState<any[]>([])
+  const [categories, setCategories] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const { toasts, addToast, removeToast } = useToasts()
 
@@ -55,7 +55,7 @@ const BasicTable = () => {
       confirmButtonText: 'Login',
       allowOutsideClick: false,
     })
-
+    
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
@@ -85,55 +85,115 @@ const BasicTable = () => {
   }, [dispatch, token])
 
   useEffect(() => {
-    document.title = `${appTitle}Admin Management`
+    document.title = `${appTitle} Categories Management`
   }, [])
 
   useEffect(() => {
     if (token && validateToken(token)) {
-      fetchAdmins()
+      fetchCategories()
     }
   }, [token])
 
-  const fetchAdmins = async () => {
+  const fetchCategories = async () => {
     try {
       setIsLoading(true)
-
+      
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
       }
 
-      const headers = {
+      const headers = { 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       }
 
-      const response = await fetch(`${API_URL}/employee-management`, {
-        method: 'GET',
-        headers
+      const response = await fetch(`${API_URL}/categories`, { 
+        method: 'GET', 
+        headers 
       })
-
+      
       if (response.status === 401) {
         await handleTokenExpired()
         return
       }
-
+      
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
       const data = await response.json()
-      const filteredAdmins = data.filter((emp: any) => emp.type === 'admin')
+      setCategories(data)
 
-      setAdmins(filteredAdmins)
     } catch (error) {
+      console.error('Error fetching categories:', error)
       if (error instanceof Error && error.message.includes('401')) {
         await handleTokenExpired()
+      } else {
+        addToast('Failed to fetch categories', { toastClass: 'bg-danger', delay: 3000 })
       }
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleDelete = async (id: string) => {
+  useEffect(() => {
+    if (categories.length > 0 && table.current && !dataTable) {
+      const dt = $(table.current).DataTable({
+        responsive: true,
+        serverSide: false,
+        processing: true,
+        data: categories,
+        destroy: true,
+        language: {
+          paginate: {
+            first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
+            previous: ReactDOMServer.renderToStaticMarkup(<TbChevronLeft className="fs-lg" />),
+            next: ReactDOMServer.renderToStaticMarkup(<TbChevronRight className="fs-lg" />),
+            last: ReactDOMServer.renderToStaticMarkup(<TbChevronsRight className="fs-lg" />),
+          },
+          emptyTable: 'No categories found',
+          zeroRecords: 'No matching records found',
+        },
+        columns: [
+          { title: 'Name', data: 'name' },
+          { title: 'Created At', data: 'createdAt' },
+          { title: 'Updated At', data: 'updatedAt' },
+          {
+            title: 'Actions',
+            data: null,
+            orderable: false,
+            searchable: false,
+            render: function (data: any, type: any, row: any) {
+              const htmlString = `
+                <div class="d-flex gap-2">
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-info btn-view">View</button>
+                </div>
+              `;
+              return htmlString;
+            },
+          },
+        ],
+        drawCallback: function () {
+          $(this.api().table().body()).find('.btn-edit, .btn-delete, .btn-view').off('click').on('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const id = $(this).data('id');
+            const buttonType = $(this).hasClass('btn-edit') ? 'edit' : 
+                             $(this).hasClass('btn-delete') ? 'delete' : 'view';
+            
+            handleTableButtonClick(id, buttonType);
+          });
+        }
+      })
+      setDataTable(dt)
+    }
+  }, [categories, dataTable])
+
+  const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
+    console.log('🎯 Button clicked with ID:', id, 'Type:', type);
+
     if (!token || !validateToken(token)) {
       await handleTokenExpired()
       return
@@ -143,11 +203,30 @@ const BasicTable = () => {
       await Swal.fire({
         icon: 'warning',
         title: 'Access Denied',
-        text: 'Only admin can delete other admins.',
+        text: 'You are not admin. Only admin can access this functionality.',
       })
       return
     }
 
+    if (type === 'delete') {
+      await handleDelete(id)
+    } else if (type === 'view') {
+      router.push(`/categories/view/${id}`)
+    } else if (type === 'edit') {
+      console.log('🚀 Navigating to edit page with ID:', id)
+      router.push(`/categories/edit/${id}`)
+    }
+  }
+
+  useEffect(() => {
+    if (dataTable && categories.length > 0) {
+      dataTable.clear()
+      dataTable.rows.add(categories)
+      dataTable.draw()
+    }
+  }, [categories, dataTable])
+
+  const handleDelete = async (id: string) => {
     const result = await Swal.fire({
       title: 'Are you sure?',
       text: "You won't be able to revert this!",
@@ -160,12 +239,12 @@ const BasicTable = () => {
 
     if (result.isConfirmed) {
       try {
-        const headers = {
+        const headers = { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         }
 
-        const response = await fetch(`${API_URL}/employee-management/${id}`, {
+        const response = await fetch(`${API_URL}/categories/${id}`, {
           method: 'DELETE',
           headers,
         })
@@ -177,84 +256,22 @@ const BasicTable = () => {
 
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
 
-        setAdmins(prev => prev.filter(admin => admin.id !== id))
-        addToast('Admin deleted successfully', { toastClass: 'bg-success', delay: 3000 })
+        setCategories(prev => prev.filter(cat => cat.id !== id))
+        
+        addToast('Category deleted successfully', { toastClass: 'bg-success', delay: 3000 })
+        
       } catch (error) {
-        addToast('Failed to delete admin', { toastClass: 'bg-danger', delay: 3000 })
-        fetchAdmins()
+        addToast('Failed to delete category', { toastClass: 'bg-danger', delay: 3000 })
+        fetchCategories()
       }
     }
   }
 
   useEffect(() => {
-    if (admins.length > 0 && table.current && !dataTable) {
-      const dt = $(table.current).DataTable({
-        responsive: true,
-        serverSide: false,
-        processing: true,
-        data: admins,
-        destroy: true,
-        language: {
-          paginate: {
-            first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
-            previous: ReactDOMServer.renderToStaticMarkup(<TbChevronLeft className="fs-lg" />),
-            next: ReactDOMServer.renderToStaticMarkup(<TbChevronRight className="fs-lg" />),
-            last: ReactDOMServer.renderToStaticMarkup(<TbChevronsRight className="fs-lg" />),
-          },
-          emptyTable: 'No admins found',
-          zeroRecords: 'No matching records found',
-        },
-        columns: [
-          { title: 'Name', data: 'name' },
-          { title: 'E-Mail Address', data: 'email_address' },
-          { title: 'Type', data: 'type' },
-          { title: 'Reference Number', data: 'reference_number' },
-          { title: 'Reference Date', data: 'reference_date' },
-          { title: 'Created At', data: 'createdAt' },
-          { title: 'Updated At', data: 'updatedAt' },
-          {
-            title: 'Actions',
-            data: null,
-            orderable: false,
-            searchable: false,
-            render: function (data: any, type: any, row: any) {
-              return `
-                <div class="d-flex gap-2">
-                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
-                </div>
-              `
-            },
-          },
-        ],
-        drawCallback: function () {
-          $(this.api().table().body()).find('.btn-delete').off('click').on('click', function (e) {
-            e.preventDefault()
-            const id = $(this).data('id')
-            handleDelete(id)
-          })
-        },
-      })
-      setDataTable(dt)
-    }
-  }, [admins, dataTable])
-
-  useEffect(() => {
-    if (dataTable && admins.length > 0) {
-      dataTable.clear()
-      dataTable.rows.add(admins)
-      dataTable.draw()
-    }
-  }, [admins, dataTable])
-
-  useEffect(() => {
     return () => {
-      try {
-        if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
-          dataTable.destroy(true)
-          setDataTable(null)
-        }
-      } catch (e) {
-        console.warn("DataTable destroy skipped to prevent removeChild error:", e)
+      if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
+        dataTable.destroy(true)
+        setDataTable(null)
       }
     }
   }, [dataTable])
@@ -262,17 +279,17 @@ const BasicTable = () => {
   return (
     <Fragment>
       <Toaster toasts={toasts} addToast={addToast} removeToast={removeToast} />
-      <ComponentCard title="Admin List">
+      <ComponentCard title="Categories List">
         {isLoading ? (
           <div className="text-center p-4">
             <div className="spinner-border text-primary" role="status">
               <span className="visually-hidden">Loading...</span>
             </div>
-            <p className="mt-2">Loading admins...</p>
+            <p className="mt-2">Loading categories...</p>
           </div>
-        ) : admins.length === 0 ? (
+        ) : categories.length === 0 ? (
           <div className="text-center p-4">
-            <p>No admins found.</p>
+            <p>No categories found.</p>
           </div>
         ) : (
           <table
@@ -282,10 +299,6 @@ const BasicTable = () => {
             <thead className="thead-sm text-uppercase fs-xxs">
               <tr>
                 <th>Name</th>
-                <th>E-Mail Address</th>
-                <th>Type</th>
-                <th>Reference Number</th>
-                <th>Reference Date</th>
                 <th>Created At</th>
                 <th>Updated At</th>
                 <th>Actions</th>
@@ -301,18 +314,18 @@ const BasicTable = () => {
 const PageContent = () => (
   <Fragment>
     <Container fluid className="px-2 px-sm-3">
-      <PageBreadcrumb title="Admin List" />
+      <PageBreadcrumb title="Categories List" />
       <Row className="justify-content-center mt-3">
         <Col xs={12}>
           <Card className="mb-3">
             <Card.Body className="p-3 p-sm-4">
               <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-2">
                 <div>
-                  <h5 className="card-title mb-1">Manage Admins</h5>
-                  <p className="text-muted mb-0 small">Delete admins from system</p>
+                  <h5 className="card-title mb-1">Manage Categories</h5>
+                  <p className="text-muted mb-0 small">Add, edit, or delete categories</p>
                 </div>
-                <Link href="/admin/add" className="btn btn-primary">
-                  <i className="mdi mdi-plus me-1"></i>Add Admin
+                <Link href="/categories/add" className="btn btn-primary">
+                  <i className="mdi mdi-plus me-1"></i>Add Category
                 </Link>
               </div>
             </Card.Body>
