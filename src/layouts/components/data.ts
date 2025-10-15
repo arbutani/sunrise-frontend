@@ -81,7 +81,7 @@ export const menuItems: MenuItemType[] = [
       { key: 'dashboard-v1', label: 'Products List', icon: LuCookie, url: '/product' },
       { key: 'dashboard-v2', label: 'Other', icon: LuCircleDot , badge: { variant: 'success', text: '02' },
         children:[{ key: 'dashboard-va1', label: 'Categories', icon: LuBox, url: '/categories' },
-                  { key: 'dashboard-va2', label: 'SubCategories', icon: LuBoxes, url: '/' },
+                  { key: 'dashboard-va2', label: 'SubCategories', icon: LuBoxes, url: '/subcategories' },
         ]
        },
      

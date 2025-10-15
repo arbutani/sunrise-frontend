@@ -187,7 +187,7 @@ const CategoryDetailsCard = ({
           onClick={() => router.push('/categories')}
           className="d-flex align-items-center gap-2"
         >
-          Back to Categories
+          Back
         </Button>
       </Card.Header>
       <Card.Body>
