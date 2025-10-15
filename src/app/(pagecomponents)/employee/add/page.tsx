@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm, Controller } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
@@ -14,28 +14,103 @@ import Swal from 'sweetalert2'
 import withReactContent from 'sweetalert2-react-content'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState } from '@/store'
-import { setToken, clearToken } from '@/store/authSlice'
 import { appTitle } from '@/helpers'
+import { clearToken, setToken } from '@/store/authSlice'
 import { jwtDecode } from 'jwt-decode'
 
 const ReactSwal = withReactContent(Swal)
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-const validateToken = (token: string): boolean => {
-  try {
-    const decoded: any = jwtDecode(token)
-    const currentTime = Date.now() / 1000
-    return decoded.exp > currentTime
-  } catch (error) {
-    return false
+
+let isShowingSessionAlert = false
+
+class ApiClient {
+  private baseURL: string;
+  
+  constructor() {
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+  }
+  
+  private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
+    if (response.status === 401) {
+      
+      await onTokenExpired()
+      throw new Error('Session expired');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return await response.json();
+  }
+  
+  async get(url: string, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async post(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async put(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async delete(url: string, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
   }
 }
 
+export const apiClient = new ApiClient();
+
+const validateToken = (token: string): boolean => {
+  try {
+    const decoded: any = jwtDecode(token);
+    return decoded.exp > Date.now() / 1000;
+  } catch {
+    return false;
+  }
+};
+
 const EmployeePage = () => {
   const router = useRouter()
-  const dispatch = useDispatch()
   const { toasts, addToast, removeToast } = useToasts()
+  const dispatch = useDispatch()
   const token = useSelector((state: RootState) => state.auth.token)
   const [isAuthChecking, setIsAuthChecking] = useState(true)
 
@@ -82,13 +157,23 @@ const EmployeePage = () => {
   const { errors } = formState
 
   const handleTokenExpired = async () => {
-    await Swal.fire({
-      icon: 'warning',
-      title: 'Session Expired',
-      text: 'Your session has expired. Please login again.',
-      confirmButtonText: 'Login',
-      allowOutsideClick: false,
-    })
+    
+    if (!isShowingSessionAlert) {
+      isShowingSessionAlert = true
+      
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Session Expired',
+        text: 'Your session has expired. Please login again.',
+        confirmButtonText: 'OK',
+        allowOutsideClick: false,
+      })
+      
+ 
+      setTimeout(() => {
+        isShowingSessionAlert = false
+      }, 1000)
+    }
     
     dispatch(clearToken())
     localStorage.removeItem('user')
@@ -102,16 +187,22 @@ const EmployeePage = () => {
         return
       }
 
+     
       const stored = localStorage.getItem('user')
       if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed.token && validateToken(parsed.token)) {
-          dispatch(setToken(parsed.token))
-          setIsAuthChecking(false)
-          return
+        try {
+          const parsed = JSON.parse(stored)
+          if (parsed.token && validateToken(parsed.token)) {
+            dispatch(setToken(parsed.token))
+            setIsAuthChecking(false)
+            return
+          }
+        } catch (error) {
+          console.error('Error parsing stored user data:', error)
         }
       }
 
+     
       await handleTokenExpired()
     }
 
@@ -120,6 +211,7 @@ const EmployeePage = () => {
 
   const onSubmit = async (values: any) => {
     try {
+      
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
@@ -134,34 +226,15 @@ const EmployeePage = () => {
           monthly_salary: values.monthly_salary,
           working_days: values.working_days,
           working_hour: values.working_hour,
-        }
+        },
       }
 
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
+      const res = await apiClient.post('/employee-management', payload, token, handleTokenExpired)
 
-      const response = await fetch(`${API_URL}/employee-management`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      })
-
-      if (response.status === 401) {
-        await handleTokenExpired()
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const res = await response.json()
-
-      if (res.status === true) {
+      if (res.status) {
         addToast(res.message, { toastClass: 'bg-success', delay: 3000 })
         reset()
+
         await ReactSwal.fire({
           title: 'Success!',
           text: 'Employee added successfully!',
@@ -169,20 +242,18 @@ const EmployeePage = () => {
           confirmButtonText: 'OK',
           confirmButtonColor: '#3085d6',
         })
+
         router.push('/employee')
       } else {
         addToast(res.message || 'Error creating employee', { toastClass: 'bg-danger', delay: 3000 })
       }
-    } catch (err: any) {
-      if (err instanceof Error && err.message.includes('401')) {
-        await handleTokenExpired()
-      } else {
-        console.error('Error creating employee:', err)
-        addToast(err?.message || 'Something went wrong', { 
-          toastClass: 'bg-danger', 
-          delay: 3000 
-        })
+    } catch (error: any) {
+      if (error instanceof Error && error.message.includes('Session expired')) {
+        
+        return
       }
+      console.error('Error creating employee:', error)
+      addToast(error?.message || 'Something went wrong', { toastClass: 'bg-danger', delay: 3000 })
     }
   }
 
@@ -212,7 +283,6 @@ const EmployeePage = () => {
                 <Form onSubmit={handleSubmit(onSubmit)}>
                   <Row>
                     <Col xs={12} md={6}>
-                      {/* Employee Name */}
                       <div className="mb-3">
                         <FormLabel>Employee Name <span className="text-danger">*</span></FormLabel>
                         <FormControl
@@ -226,7 +296,6 @@ const EmployeePage = () => {
                         </Form.Control.Feedback>
                       </div>
 
-                      {/* Email */}
                       <div className="mb-3">
                         <FormLabel>Email Address <span className="text-danger">*</span></FormLabel>
                         <FormControl
@@ -240,7 +309,6 @@ const EmployeePage = () => {
                         </Form.Control.Feedback>
                       </div>
 
-                      {/* Password */}
                       <div className="mb-3">
                         <FormLabel>Password <span className="text-danger">*</span></FormLabel>
                         <FormControl
@@ -257,7 +325,6 @@ const EmployeePage = () => {
                         </Form.Control.Feedback>
                       </div>
 
-                      {/* Employee Type */}
                       <div className="mb-3">
                         <FormLabel>Employee Type <span className="text-danger">*</span></FormLabel>
                         <Controller
@@ -270,7 +337,6 @@ const EmployeePage = () => {
                               value={employeeTypes.find(opt => opt.value === field.value) || null}
                               onChange={option => field.onChange(option?.value)}
                               placeholder="Select Employee Type"
-                              isInvalid={!!errors.type}
                             />
                           )}
                         />
@@ -279,7 +345,6 @@ const EmployeePage = () => {
                     </Col>
 
                     <Col xs={12} md={6}>
-                      {/* Salary Fields */}
                       <div className="mb-3">
                         <FormLabel>Monthly Salary <span className="text-danger">*</span></FormLabel>
                         <FormControl
@@ -323,7 +388,6 @@ const EmployeePage = () => {
                         </Form.Control.Feedback>
                       </div>
 
-                      {/* Optional Note */}
                       <Card className="bg-light">
                         <Card.Body>
                           <h6>Note:</h6>

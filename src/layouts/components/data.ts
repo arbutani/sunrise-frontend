@@ -6,6 +6,7 @@ import {
   
   LuBox,
   LuBoxes,
+  LuCircleDot,
   LuCircleGauge,
   LuContainer,
   LuCookie,
@@ -75,11 +76,15 @@ export const menuItems: MenuItemType[] = [
     key: 'dashboards2',
     label: 'Product Management',
     icon: LuContainer,
-    badge: { variant: 'success', text: '03' },
+    badge: { variant: 'primary', text: '02' },
     children: [
       { key: 'dashboard-v1', label: 'Products List', icon: LuCookie, url: '/product' },
-      { key: 'dashboard-v2', label: 'Categories', icon: LuBox, url: '/categories' },
-      { key: 'dashboard-v3', label: 'SubCategories', icon: LuBoxes, url: '/product' },
+      { key: 'dashboard-v2', label: 'Other', icon: LuCircleDot , badge: { variant: 'success', text: '02' },
+        children:[{ key: 'dashboard-va1', label: 'Categories', icon: LuBox, url: '/categories' },
+                  { key: 'dashboard-va2', label: 'SubCategories', icon: LuBoxes, url: '/' },
+        ]
+       },
+     
       
     ],
   },

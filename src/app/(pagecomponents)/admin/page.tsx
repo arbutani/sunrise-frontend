@@ -21,6 +21,94 @@ import $ from 'jquery'
 import { useToasts } from '@/components/helper/useToasts'
 import Toaster from '@/components/helper/toaster'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
+
+
+let isShowingSessionAlert = false
+
+class ApiClient {
+  private baseURL: string;
+  
+  constructor() {
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+  }
+  
+  private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
+    if (response.status === 401) {
+      
+      await onTokenExpired()
+      throw new Error('Session expired');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return await response.json();
+  }
+  
+  async get(url: string, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async post(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async put(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async delete(url: string, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+}
+
+export const apiClient = new ApiClient();
+
+const validateToken = (token: string): boolean => {
+  try {
+    const decoded: any = jwtDecode(token);
+    return decoded.exp > Date.now() / 1000;
+  } catch {
+    return false;
+  }
+};
+
 const BasicTable = () => {
   DataTable.use(DT)
   const table = useRef<HTMLTableElement>(null)
@@ -35,27 +123,25 @@ const BasicTable = () => {
   const tokenPayload = token ? jwtDecode<any>(token) : null
   const isAdmin = tokenPayload?.type === 'admin'
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
-
-  const validateToken = (token: string): boolean => {
-    try {
-      const decoded: any = jwtDecode(token)
-      const currentTime = Date.now() / 1000
-      return decoded.exp > currentTime
-    } catch (error) {
-      return false
-    }
-  }
-
   const handleTokenExpired = async () => {
-    await Swal.fire({
-      icon: 'warning',
-      title: 'Session Expired',
-      text: 'Your session has expired. Please login again.',
-      confirmButtonText: 'Login',
-      allowOutsideClick: false,
-    })
-
+    
+    if (!isShowingSessionAlert) {
+      isShowingSessionAlert = true
+      
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Session Expired',
+        text: 'Your session has expired. Please login again.',
+        confirmButtonText: 'OK',
+        allowOutsideClick: false,
+      })
+      
+    
+      setTimeout(() => {
+        isShowingSessionAlert = false
+      }, 1000)
+    }
+    
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
@@ -70,17 +156,21 @@ const BasicTable = () => {
 
       const stored = localStorage.getItem('user')
       if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed.token && validateToken(parsed.token)) {
-          dispatch(setToken(parsed.token))
-          setIsLoading(false)
-          return
+        try {
+          const parsed = JSON.parse(stored)
+          if (parsed.token && validateToken(parsed.token)) {
+            dispatch(setToken(parsed.token))
+            setIsLoading(false)
+            return
+          }
+        } catch (error) {
+          console.error('Error parsing stored user data:', error)
         }
       }
 
+      
       await handleTokenExpired()
     }
-
     checkAuth()
   }, [dispatch, token])
 
@@ -91,43 +181,31 @@ const BasicTable = () => {
   useEffect(() => {
     if (token && validateToken(token)) {
       fetchAdmins()
+    } else {
+      setIsLoading(false)
     }
   }, [token])
 
   const fetchAdmins = async () => {
     try {
       setIsLoading(true)
-
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
       }
 
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-
-      const response = await fetch(`${API_URL}/employee-management`, {
-        method: 'GET',
-        headers
-      })
-
-      if (response.status === 401) {
-        await handleTokenExpired()
-        return
-      }
-
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-
-      const data = await response.json()
+      
+      const data = await apiClient.get('/employee-management', token, handleTokenExpired)
+      
       const filteredAdmins = data.filter((emp: any) => emp.type === 'admin')
-
       setAdmins(filteredAdmins)
     } catch (error) {
-      if (error instanceof Error && error.message.includes('401')) {
-        await handleTokenExpired()
+      if (error instanceof Error && error.message.includes('Session expired')) {
+        
+        return
       }
+      console.error('Error fetching admins:', error)
+      addToast('Failed to fetch admins', { toastClass: 'bg-danger', delay: 3000 })
     } finally {
       setIsLoading(false)
     }
@@ -160,26 +238,16 @@ const BasicTable = () => {
 
     if (result.isConfirmed) {
       try {
-        const headers = {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-
-        const response = await fetch(`${API_URL}/employee-management/${id}`, {
-          method: 'DELETE',
-          headers,
-        })
-
-        if (response.status === 401) {
-          await handleTokenExpired()
-          return
-        }
-
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+        
+        await apiClient.delete(`/employee-management/${id}`, token, handleTokenExpired)
 
         setAdmins(prev => prev.filter(admin => admin.id !== id))
         addToast('Admin deleted successfully', { toastClass: 'bg-success', delay: 3000 })
       } catch (error) {
+        if (error instanceof Error && error.message.includes('Session expired')) {
+          
+          return
+        }
         addToast('Failed to delete admin', { toastClass: 'bg-danger', delay: 3000 })
         fetchAdmins()
       }
@@ -217,21 +285,21 @@ const BasicTable = () => {
             data: null,
             orderable: false,
             searchable: false,
-            render: function (data: any, type: any, row: any) {
-              return `
-                <div class="d-flex gap-2">
-                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
-                </div>
-              `
-            },
+            render: (_: any, __: any, row: any) => `
+              <div class="d-flex gap-2">
+                <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
+              </div>`,
           },
         ],
         drawCallback: function () {
-          $(this.api().table().body()).find('.btn-delete').off('click').on('click', function (e) {
-            e.preventDefault()
-            const id = $(this).data('id')
-            handleDelete(id)
-          })
+          $(this.api().table().body())
+            .find('.btn-delete')
+            .off('click')
+            .on('click', function (e) {
+              e.preventDefault()
+              const id = $(this).data('id')
+              handleDelete(id)
+            })
         },
       })
       setDataTable(dt)
@@ -254,7 +322,7 @@ const BasicTable = () => {
           setDataTable(null)
         }
       } catch (e) {
-        console.warn("DataTable destroy skipped to prevent removeChild error:", e)
+        console.warn('DataTable destroy skipped:', e)
       }
     }
   }, [dataTable])
@@ -275,10 +343,7 @@ const BasicTable = () => {
             <p>No admins found.</p>
           </div>
         ) : (
-          <table
-            ref={table}
-            className="table table-striped dt-responsive align-middle mb-0 w-100"
-          >
+          <table ref={table} className="table table-striped dt-responsive align-middle mb-0 w-100">
             <thead className="thead-sm text-uppercase fs-xxs">
               <tr>
                 <th>Name</th>
@@ -326,8 +391,6 @@ const PageContent = () => (
   </Fragment>
 )
 
-const Page = () => {
-  return <PageContent />
-}
+const Page = () => <PageContent />
 
 export default Page

@@ -27,7 +27,6 @@ import { appTitle } from '@/helpers'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-
 let isShowingSessionAlert = false
 
 class ApiClient {
@@ -39,7 +38,6 @@ class ApiClient {
   
   private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
     if (response.status === 401) {
-      
       await onTokenExpired()
       throw new Error('Session expired');
     }
@@ -114,54 +112,52 @@ const validateToken = (token: string): boolean => {
   }
 }
 
-const EmployeeDetailsCard = ({ 
-  employeeId, 
+const CategoryDetailsCard = ({ 
+  categoryId, 
   token, 
   onTokenExpired 
 }: { 
-  employeeId: string
+  categoryId: string
   token: string | null
   onTokenExpired: () => Promise<void>
 }) => {
-  const [employeeData, setEmployeeData] = useState<any>(null)
+  const [categoryData, setCategoryData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
-    document.title = `${appTitle}Salary Details`
+    document.title = `${appTitle}Category Details`
   }, [])
 
   useEffect(() => {
-    const fetchEmployeeDetails = async () => {
+    const fetchCategoryDetails = async () => {
       try {
         if (!token || !validateToken(token)) {
           await onTokenExpired()
           return
         }
 
-       
-        const data = await apiClient.get(`/employee-management/${employeeId}`, token, onTokenExpired)
+        const data = await apiClient.get(`/categories/${categoryId}`, token, onTokenExpired)
         
         if (data && data.data) {
-          setEmployeeData(data.data)
+          setCategoryData(data.data)
         }
       } catch (error) {
         if (error instanceof Error && error.message.includes('Session expired')) {
-         
           return
         } else {
-          console.error('Error fetching employee details:', error)
-          Swal.fire('Error!', 'Failed to load employee details.', 'error')
+          console.error('Error fetching category details:', error)
+          Swal.fire('Error!', 'Failed to load category details.', 'error')
         }
       } finally {
         setLoading(false)
       }
     }
 
-    if (employeeId && token) {
-      fetchEmployeeDetails()
+    if (categoryId && token) {
+      fetchCategoryDetails()
     }
-  }, [employeeId, token])
+  }, [categoryId, token])
 
   if (loading) {
     return (
@@ -171,51 +167,45 @@ const EmployeeDetailsCard = ({
             <div className="spinner-border text-primary" role="status">
               <span className="visually-hidden">Loading...</span>
             </div>
-            <p className="mt-2">Loading employee details...</p>
+            <p className="mt-2">Loading category details...</p>
           </div>
         </Card.Body>
       </Card>
     )
   }
 
-  if (!employeeData) {
+  if (!categoryData) {
     return null
   }
 
   return (
     <Card className="mb-3">
       <Card.Header className="d-flex justify-content-between align-items-center">
-        <h5 className="card-title mb-0">Employee Details</h5>
+        <h5 className="card-title mb-0">Category Details</h5>
         <Button
           variant="primary"
-          onClick={() => router.push('/employee')}
+          onClick={() => router.push('/categories')}
           className="d-flex align-items-center gap-2"
         >
-          Back
+          Back to Categories
         </Button>
       </Card.Header>
       <Card.Body>
         <Row>
           <Col md={6}>
             <p className="mb-2">
-              <strong>Name:</strong> {employeeData.name}
+              <strong>ID:</strong> {categoryData.id}
             </p>
             <p className="mb-2">
-              <strong>Email:</strong> {employeeData.email_address}
-            </p>
-            <p className="mb-2">
-              <strong>Type:</strong> {employeeData.type}
+              <strong>Name:</strong> {categoryData.name}
             </p>
           </Col>
           <Col md={6}>
             <p className="mb-2">
-              <strong>Reference Number:</strong> {employeeData.reference_number}
+              <strong>Created At:</strong> {categoryData.createdAt}
             </p>
             <p className="mb-2">
-              <strong>Reference Date:</strong> {employeeData.reference_date}
-            </p>
-            <p className="mb-2">
-              <strong>Created At:</strong> {employeeData.createdAt}
+              <strong>Updated At:</strong> {categoryData.updatedAt}
             </p>
           </Col>
         </Row>
@@ -225,11 +215,11 @@ const EmployeeDetailsCard = ({
 }
 
 const BasicTable = ({ 
-  employeeId, 
+  categoryId, 
   token, 
   onTokenExpired 
 }: { 
-  employeeId: string
+  categoryId: string
   token: string | null
   onTokenExpired: () => Promise<void>
 }) => {
@@ -241,26 +231,26 @@ const BasicTable = ({
     language: {
       paginate: {
         first: ReactDOMServer.renderToStaticMarkup(
-          <TbChevronsLeft className="fs-lg" />,
+          <TbChevronsLeft className="fs-lg" />
         ),
         previous: ReactDOMServer.renderToStaticMarkup(
-          <TbChevronLeft className="fs-lg" />,
+          <TbChevronLeft className="fs-lg" />
         ),
         next: ReactDOMServer.renderToStaticMarkup(
-          <TbChevronRight className="fs-lg" />,
+          <TbChevronRight className="fs-lg" />
         ),
         last: ReactDOMServer.renderToStaticMarkup(
-          <TbChevronsRight className="fs-lg" />,
-        ),
+          <TbChevronsRight className="fs-lg" />
+        )
       },
-      emptyTable: 'No salary records found',
+      emptyTable: 'No subcategories found',
       zeroRecords: 'No matching records found',
     },
     processing: true,
     serverSide: false,
     ajax: async (dtData: any, callback: (data: any) => void) => {
       try {
-        if (!employeeId || !token || !validateToken(token)) {
+        if (!categoryId || !token || !validateToken(token)) {
           if (!validateToken(token || '')) {
             await onTokenExpired()
           }
@@ -268,46 +258,46 @@ const BasicTable = ({
           return
         }
 
-        
-        const apiData = await apiClient.get(`/employee-salary/employee/${employeeId}`, token, onTokenExpired)
+        const apiData = await apiClient.get(`/subcategories/category/${categoryId}`, token, onTokenExpired)
 
-        if (apiData && apiData.data) {
-          const salaryData = apiData.data.sort(
+        const subcategoriesData = apiData?.data || []
+
+        if (subcategoriesData && Array.isArray(subcategoriesData)) {
+          const sortedData = subcategoriesData.sort(
             (a: any, b: any) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
           )
 
           callback({
             draw: 1,
-            data: salaryData,
-            recordsTotal: salaryData.length,
-            recordsFiltered: salaryData.length,
+            data: sortedData,
+            recordsTotal: sortedData.length,
+            recordsFiltered: sortedData.length,
           })
         } else {
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
         }
       } catch (error) {
         if (error instanceof Error && error.message.includes('Session expired')) {
-          
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
         } else {
-          console.error('Error fetching salary data:', error)
+          console.error('Error fetching subcategories data:', error)
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
         }
       }
     },
     order: [[3, 'desc']],
     columns: [
-      { title: 'Monthly Salary', data: 'monthly_salary' },
-      { title: 'Working Days', data: 'working_days' },
-      { title: 'Working Hours', data: 'working_hour' },
+      { title: 'ID', data: 'id' },
+      { title: 'Name', data: 'name' },
+      { title: 'Category ID', data: 'category_id' },
       { title: 'Created At', data: 'createdAt' },
       { title: 'Updated At', data: 'updatedAt' },
     ],
   }
 
   return (
-    <ComponentCard title="Salary Details">
+    <ComponentCard title="Subcategories">
       <DataTable
         ref={table}
         options={options}
@@ -315,9 +305,9 @@ const BasicTable = ({
       >
         <thead className="thead-sm text-uppercase fs-xxs">
           <tr>
-            <th>Monthly Salary</th>
-            <th>Working Days</th>
-            <th>Working Hours</th>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Category ID</th>
             <th>Created At</th>
             <th>Updated At</th>
           </tr>
@@ -328,17 +318,16 @@ const BasicTable = ({
   )
 }
 
-const EmployeeSalaryPage = () => {
+const CategorySubcategoriesPage = () => {
   const router = useRouter()
   const dispatch = useDispatch()
   const params = useParams()
-  const employeeId = params?.id as string
+  const categoryId = params?.id as string
   const [isLoading, setIsLoading] = useState(true)
 
   const token = useSelector((state: RootState) => state.auth.token)
 
   const handleTokenExpired = async () => {
-    
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -349,7 +338,6 @@ const EmployeeSalaryPage = () => {
         confirmButtonText: 'OK',
         allowOutsideClick: false,
       })
-      
       
       setTimeout(() => {
         isShowingSessionAlert = false
@@ -400,22 +388,26 @@ const EmployeeSalaryPage = () => {
   return (
     <Fragment>
       <Container fluid>
-        <PageBreadcrumb title="Employee Salary" subtitle="Employee List" subtitleLink="/employee" />
+        <PageBreadcrumb 
+          title="Category Subcategories" 
+          subtitle="Categories List" 
+          subtitleLink="/categories" 
+        />
       </Container>
 
       <Container fluid>
         <Row className="justify-content-center">
           <Col sm={12}>
-            {employeeId && (
-              <EmployeeDetailsCard 
-                employeeId={employeeId} 
+            {categoryId && (
+              <CategoryDetailsCard 
+                categoryId={categoryId} 
                 token={token}
                 onTokenExpired={handleTokenExpired}
               />
             )}
-            {employeeId && (
+            {categoryId && (
               <BasicTable 
-                employeeId={employeeId} 
+                categoryId={categoryId} 
                 token={token}
                 onTokenExpired={handleTokenExpired}
               />
@@ -427,4 +419,4 @@ const EmployeeSalaryPage = () => {
   )
 }
 
-export default EmployeeSalaryPage
+export default CategorySubcategoriesPage

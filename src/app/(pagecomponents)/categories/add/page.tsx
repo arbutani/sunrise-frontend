@@ -2,10 +2,10 @@
 
 import { useEffect, Fragment, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
+import { useForm, useFieldArray } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as Yup from 'yup'
-import { Container, Card, Form, FormLabel, FormControl, Button, Row, Col, Spinner } from 'react-bootstrap'
+import { Container, Card, Form, FormLabel, FormControl, Button, Row, Col, Spinner, InputGroup } from 'react-bootstrap'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { useToasts } from '@/components/helper/useToasts'
 import Toaster from '@/components/helper/toaster'
@@ -20,7 +20,6 @@ import { jwtDecode } from 'jwt-decode'
 const ReactSwal = withReactContent(Swal)
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-
 let isShowingSessionAlert = false
 
 class ApiClient {
@@ -32,7 +31,6 @@ class ApiClient {
   
   private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
     if (response.status === 401) {
-      
       await onTokenExpired()
       throw new Error('Session expired');
     }
@@ -106,7 +104,16 @@ const validateToken = (token: string): boolean => {
   }
 };
 
-const AddAdminPage = () => {
+interface Subcategory {
+  name: string;
+}
+
+interface CategoryFormData {
+  name: string;
+  subcategories: Subcategory[];
+}
+
+const AddCategoryPage = () => {
   const router = useRouter()
   const { toasts, addToast, removeToast } = useToasts()
   const dispatch = useDispatch()
@@ -114,28 +121,34 @@ const AddAdminPage = () => {
   const [isAuthChecking, setIsAuthChecking] = useState(true)
 
   useEffect(() => {
-    document.title = `${appTitle}Add Admin`
+    document.title = `${appTitle} - Add Category`
   }, [])
 
   const validationSchema = Yup.object().shape({
-    name: Yup.string().required('Admin Name is required'),
-    email_address: Yup.string().email('Invalid email format').required('Email Address is required'),
-    password: Yup.string()
-      .min(8, 'Password must be at least 8 characters')
-      .matches(
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/,
-        'Password must contain uppercase, lowercase, number and special character'
-      )
-      .required('Password is required'),
+    name: Yup.string().required('Category Name is required'),
+    subcategories: Yup.array().of(
+      Yup.object().shape({
+        name: Yup.string().required('Subcategory name is required'),
+      })
+    ),
   })
 
-  const { register, handleSubmit, formState, reset } = useForm({
+  const { register, handleSubmit, formState, control, reset } = useForm<CategoryFormData>({
     resolver: yupResolver(validationSchema),
+    defaultValues: {
+      name: '',
+      subcategories: [],
+    },
   })
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'subcategories',
+  })
+
   const { errors } = formState
 
   const handleTokenExpired = async () => {
-   
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -147,7 +160,6 @@ const AddAdminPage = () => {
         allowOutsideClick: false,
       })
       
-   
       setTimeout(() => {
         isShowingSessionAlert = false
       }, 1000)
@@ -158,7 +170,6 @@ const AddAdminPage = () => {
     router.push('/login')
   }
 
-  
   useEffect(() => {
     const checkAuth = async () => {
       if (token && validateToken(token)) {
@@ -180,16 +191,22 @@ const AddAdminPage = () => {
         }
       }
 
-     
       await handleTokenExpired()
     }
 
     checkAuth()
   }, [dispatch, token])
 
-  const onSubmit = async (values: any) => {
+  const addSubcategory = () => {
+    append({ name: '' })
+  }
+
+  const removeSubcategory = (index: number) => {
+    remove(index)
+  }
+
+  const onSubmit = async (values: CategoryFormData) => {
     try {
-      
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
@@ -197,31 +214,27 @@ const AddAdminPage = () => {
 
       const payload = {
         name: values.name,
-        email_address: values.email_address,
-        password: values.password,
-        type: 'admin',
+        subcategories: values.subcategories.filter(sub => sub.name.trim() !== ''),
       }
 
-      
-      const res = await apiClient.post('/employee-management', payload, token, handleTokenExpired)
+      const res = await apiClient.post('/categories', payload, token, handleTokenExpired)
 
       if (res.status === true) {
         addToast(res.message, { toastClass: 'bg-success', delay: 3000 })
         reset()
         await ReactSwal.fire({
           title: 'Success!',
-          text: 'Admin added successfully!',
+          text: 'Category added successfully!',
           icon: 'success',
           confirmButtonText: 'OK',
           confirmButtonColor: '#3085d6',
         })
-        router.push('/admin')
+        router.push('/categories')
       } else {
-        addToast(res.message || 'Error creating admin', { toastClass: 'bg-danger', delay: 3000 })
+        addToast(res.message || 'Error creating category', { toastClass: 'bg-danger', delay: 3000 })
       }
     } catch (err: any) {
       if (err instanceof Error && err.message.includes('Session expired')) {
-      
         return
       }
       addToast(err?.message || 'Something went wrong', {
@@ -246,25 +259,25 @@ const AddAdminPage = () => {
     <Fragment>
       <Toaster toasts={toasts} addToast={addToast} removeToast={removeToast} />
       <Container fluid className="px-2 px-sm-3">
-        <PageBreadcrumb title="Add Admin" subtitle="Admin List" subtitleLink="/admin" />
+        <PageBreadcrumb title="Add Category" subtitle="Categories List" subtitleLink="/categories" />
         <Row className="justify-content-center mt-3">
           <Col xs={12} lg={10} xl={8}>
             <Card>
               <Card.Header>
-                <Card.Title as="h5">Add New Admin</Card.Title>
+                <Card.Title as="h5">Add New Category</Card.Title>
               </Card.Header>
               <Card.Body className="p-3 p-sm-4">
                 <Form onSubmit={handleSubmit(onSubmit)}>
                   <Row>
                     <Col xs={12}>
-                      <div className="mb-3">
+                      <div className="mb-4">
                         <FormLabel>
-                          Admin Name <span className="text-danger">*</span>
+                          Category Name <span className="text-danger">*</span>
                         </FormLabel>
                         <FormControl
                           type="text"
                           {...register('name')}
-                          placeholder="Enter admin name"
+                          placeholder="Enter category name"
                           isInvalid={!!errors.name}
                         />
                         <Form.Control.Feedback type="invalid">
@@ -273,43 +286,80 @@ const AddAdminPage = () => {
                       </div>
 
                       <div className="mb-3">
-                        <FormLabel>
-                          Email Address <span className="text-danger">*</span>
-                        </FormLabel>
-                        <FormControl
-                          type="email"
-                          {...register('email_address')}
-                          placeholder="Enter email address"
-                          isInvalid={!!errors.email_address}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.email_address?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
-
-                      <div className="mb-3">
-                        <FormLabel>
-                          Password <span className="text-danger">*</span>
-                        </FormLabel>
-                        <FormControl
-                          type="password"
-                          {...register('password')}
-                          placeholder="Enter password"
-                          isInvalid={!!errors.password}
-                        />
-                        <Form.Text className="text-muted">
-                          At least 8 characters, include uppercase, lowercase, number & special character
-                        </Form.Text>
-                        <Form.Control.Feedback type="invalid">
-                          {errors.password?.message as string}
-                        </Form.Control.Feedback>
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <FormLabel className="mb-0">Subcategories (Optional)</FormLabel>
+                          <Button 
+                            type="button" 
+                            variant="outline-primary" 
+                            size="sm"
+                            onClick={addSubcategory}
+                          >
+                            + Add Subcategory
+                          </Button>
+                        </div>
+                        
+                        {fields.length === 0 ? (
+                          <div className="text-center p-4 border border-dashed rounded">
+                            <p className="text-muted mb-3">No subcategories added yet</p>
+                            <Button 
+                              type="button" 
+                              variant="outline-primary"
+                              onClick={addSubcategory}
+                            >
+                              Add First Subcategory
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {fields.map((field, index) => (
+                              <div key={field.id} className="subcategory-item">
+                                <InputGroup>
+                                  <FormControl
+                                    type="text"
+                                    placeholder={`Enter subcategory name ${index + 1}`}
+                                    {...register(`subcategories.${index}.name` as const)}
+                                    isInvalid={!!errors.subcategories?.[index]?.name}
+                                  />
+                                  <Button
+                                    variant="outline-danger"
+                                    onClick={() => removeSubcategory(index)}
+                                    disabled={formState.isSubmitting}
+                                  >
+                                    Remove
+                                  </Button>
+                                  <Form.Control.Feedback type="invalid">
+                                    {errors.subcategories?.[index]?.name?.message}
+                                  </Form.Control.Feedback>
+                                </InputGroup>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {fields.length > 0 && (
+                          <Form.Text className="text-muted">
+                            Subcategories are optional. Empty subcategories will be ignored.
+                          </Form.Text>
+                        )}
                       </div>
                     </Col>
                   </Row>
 
-                  <div className="d-grid mt-3">
-                    <Button type="submit" disabled={formState.isSubmitting} size="lg">
-                      {formState.isSubmitting ? 'Creating Admin...' : 'Create Admin'}
+                  <div className="d-flex gap-2 mt-4">
+                    <Button 
+                      type="button" 
+                      variant="outline-secondary" 
+                      onClick={() => router.push('/categories')}
+                      disabled={formState.isSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      type="submit" 
+                      disabled={formState.isSubmitting} 
+                      className="flex-fill"
+                    >
+                      {formState.isSubmitting ? 'Creating Category...' : 'Create Category'}
                     </Button>
                   </div>
                 </Form>
@@ -323,7 +373,7 @@ const AddAdminPage = () => {
 }
 
 const Page = () => {
-  return <AddAdminPage />
+  return <AddCategoryPage />
 }
 
 export default Page

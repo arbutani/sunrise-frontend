@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 import { useToasts } from "@/components/helper/useToasts";
 import PageBreadcrumb from "@/components/PageBreadcrumb";
@@ -29,12 +29,88 @@ const employeeTypes = [
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
 
+
+let isShowingSessionAlert = false;
+
+class ApiClient {
+  private baseURL: string;
+  
+  constructor() {
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+  }
+  
+  private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
+    if (response.status === 401) {
+     
+      await onTokenExpired()
+      throw new Error('Session expired');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return await response.json();
+  }
+  
+  async get(url: string, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async post(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async put(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async delete(url: string, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+}
+
+export const apiClient = new ApiClient();
+
 const validateToken = (token: string): boolean => {
   try {
     const decoded: any = jwtDecode(token);
-    const currentTime = Date.now() / 1000;
-    return decoded.exp > currentTime;
-  } catch (error) {
+    return decoded.exp > Date.now() / 1000;
+  } catch {
     return false;
   }
 };
@@ -58,33 +134,18 @@ const EmployeeUpdatePage = () => {
     email_address: Yup.string()
       .email('Invalid email format')
       .required('Email Address is required'),
-    password: Yup.string()
-      .test(
-        'password-validation',
-        'Password must be at least 8 characters and include uppercase, lowercase, number, and special character',
-        function (value) {
-          if (!value) return true; // ✅ Skip validation if empty
-          return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/.test(value);
-        }
-      ),
+    password: Yup.string().test(
+      'password-validation',
+      'Password must be at least 8 characters and include uppercase, lowercase, number, and special character',
+      value => !value || /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/.test(value)
+    ),
     type: Yup.string().required('Employee Type is required'),
-    monthly_salary: Yup.number()
-      .typeError('Monthly Salary must be a number')
-      .positive('Monthly Salary must be positive')
-      .optional(),
-    working_days: Yup.number()
-      .typeError('Working Days must be a number')
-      .positive('Working Days must be positive')
-      .max(31, 'Working Days cannot exceed 31')
-      .optional(),
-    working_hour: Yup.number()
-      .typeError('Working Hour must be a number')
-      .positive('Working Hour must be positive')
-      .max(24, 'Working Hour cannot exceed 24')
-      .optional(),
+    monthly_salary: Yup.number().typeError('Monthly Salary must be a number').positive('Monthly Salary must be positive').optional(),
+    working_days: Yup.number().typeError('Working Days must be a number').positive('Working Days must be positive').max(31, 'Working Days cannot exceed 31').optional(),
+    working_hour: Yup.number().typeError('Working Hour must be a number').positive('Working Hour must be positive').max(24, 'Working Hour cannot exceed 24').optional(),
   });
 
-  const { register, handleSubmit, control, formState, setValue, reset } = useForm({
+  const { register, handleSubmit, control, formState, reset } = useForm({
     resolver: yupResolver(validationSchema),
     defaultValues: {
       name: '',
@@ -93,68 +154,66 @@ const EmployeeUpdatePage = () => {
       type: '',
       monthly_salary: '',
       working_days: '',
-      working_hour: ''
-    }
+      working_hour: '',
+    },
   });
+
   const { errors, isSubmitting } = formState;
 
   const handleTokenExpired = async () => {
-    await Swal.fire({
-      icon: 'warning',
-      title: 'Session Expired',
-      text: 'Your session has expired. Please login again.',
-      confirmButtonText: 'Login',
-      allowOutsideClick: false,
-    });
     
-    dispatch(clearToken());
-    localStorage.removeItem('user');
-    router.push('/login');
-  };
+    if (!isShowingSessionAlert) {
+      isShowingSessionAlert = true
+      
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Session Expired',
+        text: 'Your session has expired. Please login again.',
+        confirmButtonText: 'OK',
+        allowOutsideClick: false,
+      })
+      
+    
+      setTimeout(() => {
+        isShowingSessionAlert = false
+      }, 1000)
+    }
+    
+    dispatch(clearToken())
+    localStorage.removeItem('user')
+    router.push('/login')
+  }
 
   useEffect(() => {
     const getEmployeeId = () => {
-      if (params?.id) {
-        return params.id as string;
-      }
-      
+      if (params?.id) return params.id as string;
       if (typeof window !== 'undefined') {
-        const pathSegments = window.location.pathname.split('/');
-        const idFromUrl = pathSegments[pathSegments.length - 1];
-        if (idFromUrl && idFromUrl !== 'employee' && idFromUrl !== 'update') {
-          return idFromUrl;
-        }
+        const segments = window.location.pathname.split('/');
+        const idFromUrl = segments[segments.length - 1];
+        if (idFromUrl && idFromUrl !== 'employee' && idFromUrl !== 'update') return idFromUrl;
       }
-      
       return null;
     };
-
-    const id = getEmployeeId();
-    setEmployeeId(id);
+    setEmployeeId(getEmployeeId());
   }, [params]);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuth = () => {
       if (token && validateToken(token)) {
         setIsAuthChecking(false);
         return;
       }
-
       const stored = localStorage.getItem('user');
       if (stored) {
         try {
           const parsed = JSON.parse(stored);
           if (parsed.token && validateToken(parsed.token)) {
             dispatch(setToken(parsed.token));
-            setIsAuthChecking(false);
-            return;
           }
-        } catch (error) {}
+        } catch {}
       }
-
-      await handleTokenExpired();
+      setIsAuthChecking(false);
     };
-
     checkAuth();
   }, []);
 
@@ -162,33 +221,11 @@ const EmployeeUpdatePage = () => {
     try {
       setLoading(true);
 
-      if (!token || !validateToken(token)) {
-        await handleTokenExpired();
-        return;
-      }
-
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      };
-
-      const response = await fetch(`${API_URL}/employee-management/${id}`, {
-        method: 'GET',
-        headers,
-      });
-
-      if (response.status === 401) {
-        await handleTokenExpired();
-        return;
-      }
-
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      const res = await response.json();
+      
+      const res = await apiClient.get(`/employee-management/${id}`, token!, handleTokenExpired);
 
       if (res.status && res.data) {
         const data = res.data;
-        
         const formData: any = {
           name: data.name || '',
           email_address: data.email_address || '',
@@ -196,14 +233,13 @@ const EmployeeUpdatePage = () => {
           type: data.type || '',
           monthly_salary: '',
           working_days: '',
-          working_hour: ''
+          working_hour: '',
         };
 
         let salary = null;
         if (Array.isArray(data.employee_salaries) && data.employee_salaries.length > 0) {
           salary = data.employee_salaries.sort(
-            (a: any, b: any) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           )[0];
         } else if (data.salary) {
           salary = data.salary;
@@ -216,36 +252,30 @@ const EmployeeUpdatePage = () => {
         }
 
         reset(formData);
-        
       } else {
         addToast(res.message || 'Failed to fetch employee data.', { toastClass: 'bg-danger', delay: 3000 });
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes('401')) {
-        await handleTokenExpired();
-      } else {
-        addToast(HandleError(error, router), { toastClass: 'bg-danger', delay: 3000 });
+      if (error instanceof Error && error.message.includes('Session expired')) {
+       
+        return;
       }
+      addToast(HandleError(error, router), { toastClass: 'bg-danger', delay: 3000 });
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!isAuthChecking && employeeId) {
+    if (!isAuthChecking && employeeId && token) {
       fetchEmployee(employeeId);
     }
-  }, [isAuthChecking, employeeId]);
+  }, [isAuthChecking, employeeId, token]);
 
   const onSubmit = async (values: any) => {
     try {
       if (!employeeId) {
         addToast('Employee ID not found', { toastClass: 'bg-danger', delay: 3000 });
-        return;
-      }
-      
-      if (!token || !validateToken(token)) {
-        await handleTokenExpired();
         return;
       }
 
@@ -255,9 +285,7 @@ const EmployeeUpdatePage = () => {
         type: values.type,
       };
 
-      if (values.password?.trim()) {
-        putData.password = values.password;
-      }
+      if (values.password?.trim()) putData.password = values.password;
 
       if (values.monthly_salary || values.working_days || values.working_hour) {
         putData.salary = {
@@ -267,23 +295,8 @@ const EmployeeUpdatePage = () => {
         };
       }
 
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      };
-
-      const response = await fetch(`${API_URL}/employee-management/${employeeId}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(putData),
-      });
-
-      if (response.status === 401) {
-        await handleTokenExpired();
-        return;
-      }
-
-      const res = await response.json();
+      
+      const res = await apiClient.put(`/employee-management/${employeeId}`, putData, token!, handleTokenExpired);
 
       if (res.status) {
         addToast(res.message, { toastClass: 'bg-success', delay: 3000 });
@@ -299,24 +312,23 @@ const EmployeeUpdatePage = () => {
         addToast(res.message || 'Update failed.', { toastClass: 'bg-danger', delay: 3000 });
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes('401')) {
-        await handleTokenExpired();
-      } else {
-        addToast(HandleError(error, router), { toastClass: 'bg-danger', delay: 3000 });
+      if (error instanceof Error && error.message.includes('Session expired')) {
+        
+        return;
       }
+      addToast(HandleError(error, router), { toastClass: 'bg-danger', delay: 3000 });
     }
   };
 
-  if (isAuthChecking) {
+  if (isAuthChecking || loading)
     return (
       <Container fluid className="px-2 px-sm-3">
         <div className="text-center py-5">
           <Spinner animation="border" role="status" className="me-2" />
-          Checking authentication...
+          {isAuthChecking ? 'Checking authentication...' : 'Loading employee data...'}
         </div>
       </Container>
     );
-  }
 
   if (!employeeId)
     return (
@@ -324,16 +336,6 @@ const EmployeeUpdatePage = () => {
         <div className="text-center py-5">
           <Spinner animation="border" role="status" className="me-2" />
           Loading employee information...
-        </div>
-      </Container>
-    );
-
-  if (loading)
-    return (
-      <Container fluid className="px-2 px-sm-3">
-        <div className="text-center py-5">
-          <Spinner animation="border" role="status" className="me-2" />
-          Loading employee data...
         </div>
       </Container>
     );
@@ -353,49 +355,28 @@ const EmployeeUpdatePage = () => {
                 <Form onSubmit={handleSubmit(onSubmit)}>
                   <Row>
                     <Col xs={12} md={6}>
-                      <div className="mb-3">
+                      <Form.Group className="mb-3">
                         <FormLabel>Employee Name <span className="text-danger">*</span></FormLabel>
-                        <FormControl
-                          type="text"
-                          {...register('name')}
-                          placeholder="Enter employee name"
-                          isInvalid={!!errors.name}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.name?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
+                        <FormControl type="text" {...register('name')} placeholder="Enter employee name" isInvalid={!!errors.name} />
+                        <Form.Control.Feedback type="invalid">{errors.name?.message}</Form.Control.Feedback>
+                      </Form.Group>
 
-                      <div className="mb-3">
+                      <Form.Group className="mb-3">
                         <FormLabel>Email Address <span className="text-danger">*</span></FormLabel>
-                        <FormControl
-                          type="email"
-                          {...register('email_address')}
-                          placeholder="Enter email address"
-                          isInvalid={!!errors.email_address}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.email_address?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
+                        <FormControl type="email" {...register('email_address')} placeholder="Enter email address" isInvalid={!!errors.email_address} />
+                        <Form.Control.Feedback type="invalid">{errors.email_address?.message}</Form.Control.Feedback>
+                      </Form.Group>
 
-                      <div className="mb-3">
+                      <Form.Group className="mb-3">
                         <FormLabel>Password</FormLabel>
-                        <FormControl
-                          type="password"
-                          {...register('password')}
-                          placeholder="Enter new password (leave blank to keep current)"
-                          isInvalid={!!errors.password}
-                        />
+                        <FormControl type="password" {...register('password')} placeholder="Enter new password (leave blank to keep current)" isInvalid={!!errors.password} />
                         <Form.Text className="text-muted">
-                          Leave blank to keep current password. If provided, must be at least 8 characters, include uppercase, lowercase, number & special character
+                          Leave blank to keep current password.
                         </Form.Text>
-                        <Form.Control.Feedback type="invalid">
-                          {errors.password?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
+                        <Form.Control.Feedback type="invalid">{errors.password?.message}</Form.Control.Feedback>
+                      </Form.Group>
 
-                      <div className="mb-3">
+                      <Form.Group className="mb-3">
                         <FormLabel>Employee Type <span className="text-danger">*</span></FormLabel>
                         <Controller
                           name="type"
@@ -410,59 +391,34 @@ const EmployeeUpdatePage = () => {
                             />
                           )}
                         />
-                        {errors.type && <p className="text-danger mt-1 mb-0">{errors.type.message as string}</p>}
-                      </div>
+                        {errors.type && <p className="text-danger mt-1 mb-0">{errors.type.message}</p>}
+                      </Form.Group>
                     </Col>
 
                     <Col xs={12} md={6}>
-                      <div className="mb-3">
+                      <Form.Group className="mb-3">
                         <FormLabel>Monthly Salary</FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('monthly_salary')}
-                          placeholder="Enter monthly salary"
-                          isInvalid={!!errors.monthly_salary}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.monthly_salary?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
+                        <FormControl type="number" {...register('monthly_salary')} placeholder="Enter monthly salary" isInvalid={!!errors.monthly_salary} />
+                        <Form.Control.Feedback type="invalid">{errors.monthly_salary?.message}</Form.Control.Feedback>
+                      </Form.Group>
 
-                      <div className="mb-3">
+                      <Form.Group className="mb-3">
                         <FormLabel>Working Days per Month</FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('working_days')}
-                          placeholder="Enter working days"
-                          min="1"
-                          max="31"
-                          isInvalid={!!errors.working_days}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.working_days?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
+                        <FormControl type="number" {...register('working_days')} placeholder="Enter working days" min="1" max="31" isInvalid={!!errors.working_days} />
+                        <Form.Control.Feedback type="invalid">{errors.working_days?.message}</Form.Control.Feedback>
+                      </Form.Group>
 
-                      <div className="mb-3">
+                      <Form.Group className="mb-3">
                         <FormLabel>Working Hours per Day</FormLabel>
-                        <FormControl
-                          type="number"
-                          {...register('working_hour')}
-                          placeholder="Enter working hours"
-                          min="1"
-                          max="24"
-                          isInvalid={!!errors.working_hour}
-                        />
-                        <Form.Control.Feedback type="invalid">
-                          {errors.working_hour?.message as string}
-                        </Form.Control.Feedback>
-                      </div>
+                        <FormControl type="number" {...register('working_hour')} placeholder="Enter working hours" min="1" max="24" isInvalid={!!errors.working_hour} />
+                        <Form.Control.Feedback type="invalid">{errors.working_hour?.message}</Form.Control.Feedback>
+                      </Form.Group>
 
                       <Card className="bg-light">
                         <Card.Body>
                           <h6>Note:</h6>
                           <p className="mb-0 text-muted">
-                            Leave password field blank to keep the current password. Salary information is optional for updates.
+                            Leave password blank to keep the current password. Salary information is optional.
                           </p>
                         </Card.Body>
                       </Card>
@@ -484,10 +440,4 @@ const EmployeeUpdatePage = () => {
   );
 };
 
-const Page = () => {
-  return (
-    <EmployeeUpdatePage />
-  );
-};
-
-export default Page;
+export default EmployeeUpdatePage;

@@ -2,7 +2,7 @@
 
 import ComponentCard from '@/components/cards/ComponentCard'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
-import { Card, Col, Container, Row } from 'react-bootstrap'
+import { Card, Col, Container, Row, Spinner } from 'react-bootstrap'
 import DT from 'datatables.net-bs5'
 import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
@@ -14,47 +14,145 @@ import Swal from 'sweetalert2'
 import { useRouter } from 'next/navigation'
 import { useSelector, useDispatch } from 'react-redux'
 import { RootState } from '@/store'
-import { setToken, clearToken } from '@/store/authSlice'
 import { appTitle } from '@/helpers'
-import { jwtDecode } from 'jwt-decode'
 import $ from 'jquery'
 import { useToasts } from '@/components/helper/useToasts'
 import Toaster from '@/components/helper/toaster'
+import { clearToken, setToken } from '@/store/authSlice'
+import { jwtDecode } from 'jwt-decode'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
+
+let isShowingSessionAlert = false
+
+class ApiClient {
+  private baseURL: string;
+  
+  constructor() {
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+  }
+  
+  private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
+    if (response.status === 401) {
+      await onTokenExpired()
+      throw new Error('Session expired');
+    }
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return await response.json();
+  }
+  
+  async get(url: string, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async post(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async put(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+  
+  async delete(url: string, token: string, onTokenExpired: () => Promise<void>) {
+    const response = await fetch(`${this.baseURL}${url}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    return this.handleResponse(response, onTokenExpired);
+  }
+}
+
+export const apiClient = new ApiClient();
+
+const validateToken = (token: string): boolean => {
+  try {
+    const decoded: any = jwtDecode(token);
+    return decoded.exp > Date.now() / 1000;
+  } catch {
+    return false;
+  }
+};
+
+// Function to parse your custom date format
+const parseCustomDate = (dateString: string): Date => {
+  // Format: "14-10-2025 04:20 AM"
+  const [datePart, timePart, period] = dateString.split(' ');
+  const [day, month, year] = datePart.split('-').map(Number);
+  const [hours, minutes] = timePart.split(':').map(Number);
+  
+  // Convert to 24-hour format
+  let hours24 = hours;
+  if (period === 'PM' && hours !== 12) {
+    hours24 += 12;
+  } else if (period === 'AM' && hours === 12) {
+    hours24 = 0;
+  }
+  
+  return new Date(year, month - 1, day, hours24, minutes);
+};
 
 const BasicTable = () => {
   DataTable.use(DT)
   const table = useRef<HTMLTableElement>(null)
   const [dataTable, setDataTable] = useState<any>(null)
-  const router = useRouter()
-  const dispatch = useDispatch()
   const [categories, setCategories] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isAuthChecking, setIsAuthChecking] = useState(true)
+  const router = useRouter()
+  const dispatch = useDispatch()
   const { toasts, addToast, removeToast } = useToasts()
-
   const token = useSelector((state: RootState) => state.auth.token)
-  const tokenPayload = token ? jwtDecode<any>(token) : null
-  const isAdmin = tokenPayload?.type === 'admin'
-
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
-
-  const validateToken = (token: string): boolean => {
-    try {
-      const decoded: any = jwtDecode(token)
-      const currentTime = Date.now() / 1000
-      return decoded.exp > currentTime
-    } catch (error) {
-      return false
-    }
-  }
 
   const handleTokenExpired = async () => {
-    await Swal.fire({
-      icon: 'warning',
-      title: 'Session Expired',
-      text: 'Your session has expired. Please login again.',
-      confirmButtonText: 'Login',
-      allowOutsideClick: false,
-    })
+    if (!isShowingSessionAlert) {
+      isShowingSessionAlert = true
+      
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Session Expired',
+        text: 'Your session has expired. Please login again.',
+        confirmButtonText: 'OK',
+        allowOutsideClick: false,
+      })
+      
+      setTimeout(() => {
+        isShowingSessionAlert = false
+      }, 1000)
+    }
     
     dispatch(clearToken())
     localStorage.removeItem('user')
@@ -62,19 +160,27 @@ const BasicTable = () => {
   }
 
   useEffect(() => {
+    document.title = `${appTitle} Categories Management`
+  }, [])
+
+  useEffect(() => {
     const checkAuth = async () => {
       if (token && validateToken(token)) {
-        setIsLoading(false)
+        setIsAuthChecking(false)
         return
       }
 
       const stored = localStorage.getItem('user')
       if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed.token && validateToken(parsed.token)) {
-          dispatch(setToken(parsed.token))
-          setIsLoading(false)
-          return
+        try {
+          const parsed = JSON.parse(stored)
+          if (parsed.token && validateToken(parsed.token)) {
+            dispatch(setToken(parsed.token))
+            setIsAuthChecking(false)
+            return
+          }
+        } catch (error) {
+          console.error('Error parsing stored user data:', error)
         }
       }
 
@@ -84,54 +190,72 @@ const BasicTable = () => {
     checkAuth()
   }, [dispatch, token])
 
-  useEffect(() => {
-    document.title = `${appTitle} Categories Management`
-  }, [])
-
-  useEffect(() => {
-    if (token && validateToken(token)) {
-      fetchCategories()
-    }
-  }, [token])
-
   const fetchCategories = async () => {
     try {
       setIsLoading(true)
-      
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
       }
 
-      const headers = { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-
-      const response = await fetch(`${API_URL}/categories`, { 
-        method: 'GET', 
-        headers 
-      })
-      
-      if (response.status === 401) {
-        await handleTokenExpired()
+      const data = await apiClient.get('/categories', token, handleTokenExpired)
+      setCategories(data)
+    } catch (error: any) {
+      if (error instanceof Error && error.message.includes('Session expired')) {
         return
       }
-      
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-
-      const data = await response.json()
-      setCategories(data)
-
-    } catch (error) {
-      console.error('Error fetching categories:', error)
-      if (error instanceof Error && error.message.includes('401')) {
-        await handleTokenExpired()
-      } else {
-        addToast('Failed to fetch categories', { toastClass: 'bg-danger', delay: 3000 })
-      }
+      addToast('Failed to fetch categories', { toastClass: 'bg-danger', delay: 3000 })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (token && validateToken(token)) {
+      fetchCategories()
+    } else {
+      setIsLoading(false)
+    }
+  }, [token])
+
+  const handleDelete = async (id: string) => {
+    if (!token || !validateToken(token)) {
+      await handleTokenExpired()
+      return
+    }
+
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: "You won't be able to revert this!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Yes, delete it!',
+    })
+
+    if (result.isConfirmed) {
+      try {
+        await apiClient.delete(`/categories/${id}`, token, handleTokenExpired)
+        setCategories(prev => prev.filter(cat => cat.id !== id))
+        addToast('Category deleted successfully', { toastClass: 'bg-success', delay: 3000 })
+      } catch (error: any) {
+        if (error instanceof Error && error.message.includes('Session expired')) {
+          return
+        }
+        addToast('Failed to delete category', { toastClass: 'bg-danger', delay: 3000 })
+        fetchCategories()
+      }
+    }
+  }
+
+  const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
+    if (type === 'delete') {
+      await handleDelete(id)
+    } else if (type === 'view') {
+      router.push(`/categories/view/${id}`)
+    } else if (type === 'edit') {
+      router.push(`/categories/edit/${id}`)
     }
   }
 
@@ -155,68 +279,72 @@ const BasicTable = () => {
         },
         columns: [
           { title: 'Name', data: 'name' },
-          { title: 'Created At', data: 'createdAt' },
-          { title: 'Updated At', data: 'updatedAt' },
+          { 
+            title: 'Created At', 
+            data: 'createdAt',
+            render: (data: any) => {
+              try {
+                const date = parseCustomDate(data);
+                return date.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                })
+              } catch (error) {
+                return 'Invalid Date';
+              }
+            }
+          },
+          { 
+            title: 'Updated At', 
+            data: 'updatedAt',
+            render: (data: any) => {
+              try {
+                const date = parseCustomDate(data);
+                return date.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                })
+              } catch (error) {
+                return 'Invalid Date';
+              }
+            }
+          },
           {
             title: 'Actions',
             data: null,
             orderable: false,
             searchable: false,
-            render: function (data: any, type: any, row: any) {
-              const htmlString = `
-                <div class="d-flex gap-2">
-                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
-                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
-                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-info btn-view">View</button>
-                </div>
-              `;
-              return htmlString;
-            },
+            render: (data: any, type: any, row: any) => `
+              <div class="d-flex gap-2">
+                <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
+                <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
+                <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-info btn-view">View</button>
+              </div>
+            `,
           },
         ],
         drawCallback: function () {
-          $(this.api().table().body()).find('.btn-edit, .btn-delete, .btn-view').off('click').on('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const id = $(this).data('id');
-            const buttonType = $(this).hasClass('btn-edit') ? 'edit' : 
-                             $(this).hasClass('btn-delete') ? 'delete' : 'view';
-            
-            handleTableButtonClick(id, buttonType);
-          });
-        }
+          $(this.api().table().body())
+            .find('.btn-edit, .btn-delete, .btn-view')
+            .off('click')
+            .on('click', function (e) {
+              e.preventDefault()
+              e.stopPropagation()
+              const id = $(this).data('id')
+              const type = $(this).hasClass('btn-edit')
+                ? 'edit'
+                : $(this).hasClass('btn-delete')
+                ? 'delete'
+                : 'view'
+              handleTableButtonClick(id, type)
+            })
+        },
       })
       setDataTable(dt)
     }
   }, [categories, dataTable])
-
-  const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
-    console.log('🎯 Button clicked with ID:', id, 'Type:', type);
-
-    if (!token || !validateToken(token)) {
-      await handleTokenExpired()
-      return
-    }
-
-    if (!isAdmin) {
-      await Swal.fire({
-        icon: 'warning',
-        title: 'Access Denied',
-        text: 'You are not admin. Only admin can access this functionality.',
-      })
-      return
-    }
-
-    if (type === 'delete') {
-      await handleDelete(id)
-    } else if (type === 'view') {
-      router.push(`/categories/view/${id}`)
-    } else if (type === 'edit') {
-      console.log('🚀 Navigating to edit page with ID:', id)
-      router.push(`/categories/edit/${id}`)
-    }
-  }
 
   useEffect(() => {
     if (dataTable && categories.length > 0) {
@@ -226,47 +354,6 @@ const BasicTable = () => {
     }
   }, [categories, dataTable])
 
-  const handleDelete = async (id: string) => {
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      text: "You won't be able to revert this!",
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, delete it!',
-    })
-
-    if (result.isConfirmed) {
-      try {
-        const headers = { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-
-        const response = await fetch(`${API_URL}/categories/${id}`, {
-          method: 'DELETE',
-          headers,
-        })
-
-        if (response.status === 401) {
-          await handleTokenExpired()
-          return
-        }
-
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-
-        setCategories(prev => prev.filter(cat => cat.id !== id))
-        
-        addToast('Category deleted successfully', { toastClass: 'bg-success', delay: 3000 })
-        
-      } catch (error) {
-        addToast('Failed to delete category', { toastClass: 'bg-danger', delay: 3000 })
-        fetchCategories()
-      }
-    }
-  }
-
   useEffect(() => {
     return () => {
       if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
@@ -275,6 +362,17 @@ const BasicTable = () => {
       }
     }
   }, [dataTable])
+
+  if (isAuthChecking) {
+    return (
+      <Container fluid className="px-2 px-sm-3">
+        <div className="text-center py-5">
+          <Spinner animation="border" role="status" className="me-2" />
+          Checking authentication...
+        </div>
+      </Container>
+    )
+  }
 
   return (
     <Fragment>
@@ -290,6 +388,9 @@ const BasicTable = () => {
         ) : categories.length === 0 ? (
           <div className="text-center p-4">
             <p>No categories found.</p>
+            <Link href="/categories/add" className="btn btn-primary mt-2">
+              <i className="mdi mdi-plus me-1"></i>Add First Category
+            </Link>
           </div>
         ) : (
           <table
@@ -339,8 +440,6 @@ const PageContent = () => (
   </Fragment>
 )
 
-const Page = () => {
-  return <PageContent />
-}
+const Page = () => <PageContent />
 
 export default Page
