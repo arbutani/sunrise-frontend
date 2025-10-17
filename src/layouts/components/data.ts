@@ -76,10 +76,10 @@ export const menuItems: MenuItemType[] = [
     key: 'dashboards2',
     label: 'Product Management',
     icon: LuContainer,
-    badge: { variant: 'primary', text: '02' },
+    badge: { variant: 'primary', text: '' },
     children: [
       { key: 'dashboard-v1', label: 'Products List', icon: LuCookie, url: '/product' },
-      { key: 'dashboard-v2', label: 'Other', icon: LuCircleDot , badge: { variant: 'success', text: '02' },
+      { key: 'dashboard-v2', label: 'Other', icon: LuCircleDot , badge: { variant: 'success', text: '' },
         children:[{ key: 'dashboard-va1', label: 'Categories', icon: LuBox, url: '/categories' },
                   { key: 'dashboard-va2', label: 'SubCategories', icon: LuBoxes, url: '/subcategories' },
         ]

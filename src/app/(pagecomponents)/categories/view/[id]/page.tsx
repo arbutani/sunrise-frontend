@@ -193,9 +193,7 @@ const CategoryDetailsCard = ({
       <Card.Body>
         <Row>
           <Col md={6}>
-            <p className="mb-2">
-              <strong>ID:</strong> {categoryData.id}
-            </p>
+           
             <p className="mb-2">
               <strong>Name:</strong> {categoryData.name}
             </p>
