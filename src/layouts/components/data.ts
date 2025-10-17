@@ -10,6 +10,7 @@ import {
   LuCircleGauge,
   LuContainer,
   LuCookie,
+  LuEarth,
   LuUser,
   LuUsers,
 
@@ -88,6 +89,12 @@ export const menuItems: MenuItemType[] = [
       
     ],
   },
+    {
+    key: 'country',
+    label: 'Country',
+    icon: LuEarth ,
+    url: '/country',
+   },
  
 ]
 

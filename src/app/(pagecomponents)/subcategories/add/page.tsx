@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, Fragment, useState } from 'react'
+import { useEffect, Fragment, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
@@ -104,6 +104,13 @@ const validateToken = (token: string): boolean => {
   }
 };
 
+interface Category {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface Subcategory {
   name: string;
 }
@@ -118,7 +125,17 @@ const AddCategoryPage = () => {
   const dispatch = useDispatch()
   const token = useSelector((state: RootState) => state.auth.token)
   const [isAuthChecking, setIsAuthChecking] = useState(true)
-  const [categoryId, setCategoryId] = useState<string>('')
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('')
+  const [categories, setCategories] = useState<Category[]>([])
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false)
+  
+  // Use ref for addToast to avoid dependency issues
+  const addToastRef = useRef(addToast)
+
+  // Update the ref when addToast changes
+  useEffect(() => {
+    addToastRef.current = addToast
+  }, [addToast])
 
   useEffect(() => {
     document.title = `${appTitle} - Add Subcategory`
@@ -146,7 +163,7 @@ const AddCategoryPage = () => {
 
   const { errors } = formState
 
-  const handleTokenExpired = async () => {
+  const handleTokenExpired = useCallback(async () => {
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -166,7 +183,7 @@ const AddCategoryPage = () => {
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
-  }
+  }, [dispatch, router])
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -193,7 +210,61 @@ const AddCategoryPage = () => {
     }
 
     checkAuth()
-  }, [dispatch, token])
+  }, [dispatch, token, handleTokenExpired])
+
+  // Fetch categories when component mounts and token is available
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchCategories = async () => {
+      if (!token || !validateToken(token)) return;
+      
+      setIsLoadingCategories(true);
+      try {
+        const response = await apiClient.get('/categories', token, handleTokenExpired);
+        
+        if (!isMounted) return;
+
+        // Handle both response formats - direct array or object with data property
+        let categoriesData: Category[] = [];
+        
+        if (Array.isArray(response)) {
+          // If response is directly an array
+          categoriesData = response;
+        } else if (response && typeof response === 'object' && Array.isArray(response.data)) {
+          // If response has data property that is an array
+          categoriesData = response.data;
+        } else {
+          console.error('Unexpected response format:', response);
+          addToastRef.current('Failed to load categories - unexpected format', { toastClass: 'bg-danger', delay: 3000 });
+          return;
+        }
+
+        setCategories(categoriesData);
+        
+      } catch (error: any) {
+        if (!isMounted) return;
+        
+        if (error.message.includes('Session expired')) {
+          return;
+        }
+        console.error('Error fetching categories:', error);
+        addToastRef.current('Failed to load categories', { toastClass: 'bg-danger', delay: 3000 });
+      } finally {
+        if (isMounted) {
+          setIsLoadingCategories(false);
+        }
+      }
+    };
+
+    if (!isAuthChecking && token) {
+      fetchCategories();
+    }
+
+    return () => {
+      isMounted = false
+    }
+  }, [isAuthChecking, token, handleTokenExpired]) // Removed addToast from dependencies
 
   const addSubcategory = () => {
     append({ name: '' })
@@ -212,8 +283,8 @@ const AddCategoryPage = () => {
         return
       }
 
-      if (!categoryId.trim()) {
-        addToast('Please enter a Category ID', { toastClass: 'bg-danger', delay: 3000 })
+      if (!selectedCategoryId.trim()) {
+        addToast('Please select a category', { toastClass: 'bg-danger', delay: 3000 })
         return
       }
 
@@ -224,10 +295,9 @@ const AddCategoryPage = () => {
         return
       }
 
-    
       const subcategoryPromises = validSubcategories.map(subcategory => 
         apiClient.post('/subcategories', {
-          category_id: categoryId.trim(),
+          category_id: selectedCategoryId.trim(),
           name: subcategory.name,
         }, token, handleTokenExpired)
       );
@@ -238,11 +308,18 @@ const AddCategoryPage = () => {
       let errorCount = 0;
 
       results.forEach((result, index) => {
-        if (result.status === 'fulfilled' && result.value.status === true) {
-          successCount++;
+        if (result.status === 'fulfilled') {
+          // Check both possible success formats
+          const response = result.value;
+          if ((response.status === true) || (response && response.id)) {
+            successCount++;
+          } else {
+            errorCount++;
+            console.error(`Failed to create subcategory "${validSubcategories[index].name}":`, response);
+          }
         } else {
           errorCount++;
-          console.error(`Failed to create subcategory "${validSubcategories[index].name}":`, result.status === 'rejected' ? result.reason : result.value);
+          console.error(`Failed to create subcategory "${validSubcategories[index].name}":`, result.reason);
         }
       });
 
@@ -260,7 +337,7 @@ const AddCategoryPage = () => {
         }
 
         reset();
-        setCategoryId('');
+        setSelectedCategoryId('');
         
         await ReactSwal.fire({
           title: errorCount === 0 ? 'Success!' : 'Partial Success',
@@ -316,24 +393,36 @@ const AddCategoryPage = () => {
                 <Form onSubmit={handleSubmit(onSubmit)}>
                   <Row>
                     <Col xs={12}>
-                      {/* Category ID Input */}
+                      {/* Category Dropdown */}
                       <div className="mb-4">
                         <FormLabel>
-                          Category ID <span className="text-danger">*</span>
+                          Select Category <span className="text-danger">*</span>
                         </FormLabel>
-                        <FormControl
-                          type="text"
-                          value={categoryId}
-                          onChange={(e) => setCategoryId(e.target.value)}
-                          placeholder="Enter category ID (e.g., 1b2c3d4e-5678-90ab-cdef-1234567890ab)"
-                          isInvalid={!categoryId.trim() && formState.isSubmitted}
-                        />
+                        <Form.Select
+                          value={selectedCategoryId}
+                          onChange={(e) => setSelectedCategoryId(e.target.value)}
+                          isInvalid={!selectedCategoryId.trim() && formState.isSubmitted}
+                          disabled={isLoadingCategories}
+                        >
+                          <option value="">{isLoadingCategories ? 'Loading categories...' : 'Select a category'}</option>
+                          {categories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </Form.Select>
                         <Form.Control.Feedback type="invalid">
-                          Please enter a Category ID
+                          Please select a category
                         </Form.Control.Feedback>
                         <Form.Text className="text-muted">
-                          Enter the ID of the category where you want to add subcategories
+                          Select the category where you want to add subcategories
                         </Form.Text>
+                        {isLoadingCategories && (
+                          <div className="mt-2">
+                            <Spinner animation="border" size="sm" className="me-2" />
+                            <small className="text-muted">Loading categories...</small>
+                          </div>
+                        )}
                       </div>
 
                       {/* Subcategories Section */}
@@ -401,7 +490,7 @@ const AddCategoryPage = () => {
                     </Button>
                     <Button 
                       type="submit" 
-                      disabled={formState.isSubmitting || !categoryId.trim()} 
+                      disabled={formState.isSubmitting || !selectedCategoryId.trim()} 
                       className="flex-fill"
                     >
                       {formState.isSubmitting 
