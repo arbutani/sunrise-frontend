@@ -3,122 +3,90 @@
 import ComponentCard from '@/components/cards/ComponentCard'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { Card, Col, Container, Row, Button } from 'react-bootstrap'
-
 import DT from 'datatables.net-bs5'
 import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
-
 import ReactDOMServer from 'react-dom/server'
-import {
-  TbChevronLeft,
-  TbChevronRight,
-  TbChevronsLeft,
-  TbChevronsRight,
-} from 'react-icons/tb'
+import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useDispatch, useSelector } from 'react-redux'
 import Swal from 'sweetalert2'
 import { jwtDecode } from 'jwt-decode'
-
 import { setToken, clearToken } from '@/store/authSlice'
 import { RootState } from '@/store'
 import { appTitle } from '@/helpers'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
-
-
 let isShowingSessionAlert = false
 
 class ApiClient {
-  private baseURL: string;
-  
+  private baseURL: string
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
   }
-  
+
   private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
     if (response.status === 401) {
-      
       await onTokenExpired()
-      throw new Error('Session expired');
+      throw new Error('Session expired')
     }
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    return await response.json();
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    return await response.json()
   }
-  
+
   async get(url: string, token: string, onTokenExpired: () => Promise<void>) {
     const response = await fetch(`${this.baseURL}${url}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    
-    return this.handleResponse(response, onTokenExpired);
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    })
+    return this.handleResponse(response, onTokenExpired)
   }
-  
+
   async post(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
     const response = await fetch(`${this.baseURL}${url}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(data),
-    });
-    
-    return this.handleResponse(response, onTokenExpired);
+    })
+    return this.handleResponse(response, onTokenExpired)
   }
-  
+
   async put(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
     const response = await fetch(`${this.baseURL}${url}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(data),
-    });
-    
-    return this.handleResponse(response, onTokenExpired);
+    })
+    return this.handleResponse(response, onTokenExpired)
   }
-  
+
   async delete(url: string, token: string, onTokenExpired: () => Promise<void>) {
     const response = await fetch(`${this.baseURL}${url}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    
-    return this.handleResponse(response, onTokenExpired);
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    })
+    return this.handleResponse(response, onTokenExpired)
   }
 }
 
-export const apiClient = new ApiClient();
+export const apiClient = new ApiClient()
 
 const validateToken = (token: string): boolean => {
   try {
     const decoded: any = jwtDecode(token)
     const currentTime = Date.now() / 1000
     return decoded.exp > currentTime
-  } catch (error) {
+  } catch {
     return false
   }
 }
 
-const EmployeeDetailsCard = ({ 
-  employeeId, 
-  token, 
-  onTokenExpired 
-}: { 
+const EmployeeDetailsCard = ({
+  employeeId,
+  token,
+  onTokenExpired,
+}: {
   employeeId: string
   token: string | null
   onTokenExpired: () => Promise<void>
@@ -138,32 +106,20 @@ const EmployeeDetailsCard = ({
           await onTokenExpired()
           return
         }
-
-       
         const data = await apiClient.get(`/employee-management/${employeeId}`, token, onTokenExpired)
-        
-        if (data && data.data) {
-          setEmployeeData(data.data)
-        }
+        if (data && data.data) setEmployeeData(data.data)
       } catch (error) {
-        if (error instanceof Error && error.message.includes('Session expired')) {
-         
-          return
-        } else {
-          console.error('Error fetching employee details:', error)
+        if (!(error instanceof Error && error.message.includes('Session expired'))) {
           Swal.fire('Error!', 'Failed to load employee details.', 'error')
         }
       } finally {
         setLoading(false)
       }
     }
-
-    if (employeeId && token) {
-      fetchEmployeeDetails()
-    }
+    if (employeeId && token) fetchEmployeeDetails()
   }, [employeeId, token])
 
-  if (loading) {
+  if (loading)
     return (
       <Card className="mb-3">
         <Card.Body>
@@ -176,21 +132,14 @@ const EmployeeDetailsCard = ({
         </Card.Body>
       </Card>
     )
-  }
 
-  if (!employeeData) {
-    return null
-  }
+  if (!employeeData) return null
 
   return (
     <Card className="mb-3">
       <Card.Header className="d-flex justify-content-between align-items-center">
         <h5 className="card-title mb-0">Employee Details</h5>
-        <Button
-          variant="primary"
-          onClick={() => router.push('/employee')}
-          className="d-flex align-items-center gap-2"
-        >
+        <Button variant="primary" onClick={() => router.push('/employee')} className="d-flex align-items-center gap-2">
           Back
         </Button>
       </Card.Header>
@@ -224,11 +173,11 @@ const EmployeeDetailsCard = ({
   )
 }
 
-const BasicTable = ({ 
-  employeeId, 
-  token, 
-  onTokenExpired 
-}: { 
+const BasicTable = ({
+  employeeId,
+  token,
+  onTokenExpired,
+}: {
   employeeId: string
   token: string | null
   onTokenExpired: () => Promise<void>
@@ -240,18 +189,10 @@ const BasicTable = ({
     responsive: true,
     language: {
       paginate: {
-        first: ReactDOMServer.renderToStaticMarkup(
-          <TbChevronsLeft className="fs-lg" />,
-        ),
-        previous: ReactDOMServer.renderToStaticMarkup(
-          <TbChevronLeft className="fs-lg" />,
-        ),
-        next: ReactDOMServer.renderToStaticMarkup(
-          <TbChevronRight className="fs-lg" />,
-        ),
-        last: ReactDOMServer.renderToStaticMarkup(
-          <TbChevronsRight className="fs-lg" />,
-        ),
+        first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
+        previous: ReactDOMServer.renderToStaticMarkup(<TbChevronLeft className="fs-lg" />),
+        next: ReactDOMServer.renderToStaticMarkup(<TbChevronRight className="fs-lg" />),
+        last: ReactDOMServer.renderToStaticMarkup(<TbChevronsRight className="fs-lg" />),
       },
       emptyTable: 'No salary records found',
       zeroRecords: 'No matching records found',
@@ -261,39 +202,22 @@ const BasicTable = ({
     ajax: async (dtData: any, callback: (data: any) => void) => {
       try {
         if (!employeeId || !token || !validateToken(token)) {
-          if (!validateToken(token || '')) {
-            await onTokenExpired()
-          }
+          if (!validateToken(token || '')) await onTokenExpired()
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
           return
         }
-
-        
         const apiData = await apiClient.get(`/employee-salary/employee/${employeeId}`, token, onTokenExpired)
-
         if (apiData && apiData.data) {
           const salaryData = apiData.data.sort(
-            (a: any, b: any) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
           )
-
-          callback({
-            draw: 1,
-            data: salaryData,
-            recordsTotal: salaryData.length,
-            recordsFiltered: salaryData.length,
-          })
+          callback({ draw: 1, data: salaryData, recordsTotal: salaryData.length, recordsFiltered: salaryData.length })
         } else {
           callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
         }
       } catch (error) {
-        if (error instanceof Error && error.message.includes('Session expired')) {
-          
-          callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
-        } else {
-          console.error('Error fetching salary data:', error)
-          callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
-        }
+        if (!(error instanceof Error && error.message.includes('Session expired'))) callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
+        else callback({ data: [], recordsTotal: 0, recordsFiltered: 0 })
       }
     },
     order: [[3, 'desc']],
@@ -308,11 +232,7 @@ const BasicTable = ({
 
   return (
     <ComponentCard title="Salary Details">
-      <DataTable
-        ref={table}
-        options={options}
-        className="table table-striped dt-responsive align-middle mb-0"
-      >
+      <DataTable ref={table} options={options} className="table table-striped dt-responsive align-middle mb-0">
         <thead className="thead-sm text-uppercase fs-xxs">
           <tr>
             <th>Monthly Salary</th>
@@ -334,14 +254,11 @@ const EmployeeSalaryPage = () => {
   const params = useParams()
   const employeeId = params?.id as string
   const [isLoading, setIsLoading] = useState(true)
-
   const token = useSelector((state: RootState) => state.auth.token)
 
   const handleTokenExpired = async () => {
-    
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
-      
       await Swal.fire({
         icon: 'warning',
         title: 'Session Expired',
@@ -349,13 +266,10 @@ const EmployeeSalaryPage = () => {
         confirmButtonText: 'OK',
         allowOutsideClick: false,
       })
-      
-      
       setTimeout(() => {
         isShowingSessionAlert = false
       }, 1000)
     }
-    
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
@@ -367,7 +281,6 @@ const EmployeeSalaryPage = () => {
         setIsLoading(false)
         return
       }
-
       const stored = localStorage.getItem('user')
       if (stored) {
         const parsed = JSON.parse(stored)
@@ -377,14 +290,12 @@ const EmployeeSalaryPage = () => {
           return
         }
       }
-
       await handleTokenExpired()
     }
-
     checkAuth()
   }, [dispatch, token])
 
-  if (isLoading) {
+  if (isLoading)
     return (
       <Container fluid>
         <div className="text-center p-4">
@@ -395,31 +306,17 @@ const EmployeeSalaryPage = () => {
         </div>
       </Container>
     )
-  }
 
   return (
     <Fragment>
       <Container fluid>
         <PageBreadcrumb title="Employee Salary" subtitle="Employee List" subtitleLink="/employee" />
       </Container>
-
       <Container fluid>
         <Row className="justify-content-center">
           <Col sm={12}>
-            {employeeId && (
-              <EmployeeDetailsCard 
-                employeeId={employeeId} 
-                token={token}
-                onTokenExpired={handleTokenExpired}
-              />
-            )}
-            {employeeId && (
-              <BasicTable 
-                employeeId={employeeId} 
-                token={token}
-                onTokenExpired={handleTokenExpired}
-              />
-            )}
+            {employeeId && <EmployeeDetailsCard employeeId={employeeId} token={token} onTokenExpired={handleTokenExpired} />}
+            {employeeId && <BasicTable employeeId={employeeId} token={token} onTokenExpired={handleTokenExpired} />}
           </Col>
         </Row>
       </Container>

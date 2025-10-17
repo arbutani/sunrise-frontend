@@ -23,7 +23,6 @@ import Toaster from '@/components/helper/toaster'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-
 let isShowingSessionAlert = false
 
 class ApiClient {
@@ -35,7 +34,6 @@ class ApiClient {
   
   private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
     if (response.status === 401) {
-      
       await onTokenExpired()
       throw new Error('Session expired');
     }
@@ -125,7 +123,6 @@ const BasicTable = () => {
   const isAdmin = tokenPayload?.type === 'admin'
 
   const handleTokenExpired = async () => {
-   
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -136,7 +133,6 @@ const BasicTable = () => {
         confirmButtonText: 'OK',
         allowOutsideClick: false,
       })
-      
       
       setTimeout(() => {
         isShowingSessionAlert = false
@@ -152,7 +148,6 @@ const BasicTable = () => {
     document.title = `${appTitle} Employee Management`
   }, [])
 
- 
   useEffect(() => {
     const checkAuth = async () => {
       if (token && validateToken(token)) {
@@ -174,7 +169,6 @@ const BasicTable = () => {
         }
       }
 
-      
       await handleTokenExpired()
     }
 
@@ -197,13 +191,11 @@ const BasicTable = () => {
         return
       }
 
-      
       const data = await apiClient.get('/employee-management', token, handleTokenExpired)
       const filteredEmployees = data.filter((emp: any) => emp.type !== 'admin')
       setEmployees(filteredEmployees)
     } catch (error: any) {
       if (error instanceof Error && error.message.includes('Session expired')) {
-        
         return
       }
       addToast('Failed to fetch employees', { toastClass: 'bg-danger', delay: 3000 })
@@ -239,13 +231,11 @@ const BasicTable = () => {
 
     if (result.isConfirmed) {
       try {
-        
         await apiClient.delete(`/employee-management/${id}`, token, handleTokenExpired)
         setEmployees(prev => prev.filter(emp => emp.id !== id))
         addToast('Employee deleted successfully', { toastClass: 'bg-success', delay: 3000 })
       } catch (error: any) {
         if (error instanceof Error && error.message.includes('Session expired')) {
-         
           return
         }
         addToast('Failed to delete employee', { toastClass: 'bg-danger', delay: 3000 })
@@ -255,8 +245,6 @@ const BasicTable = () => {
   }
 
   const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
-    console.log('🎯 Button clicked with ID:', id, 'Type:', type);
-
     if (!isAdmin) {
       await Swal.fire({
         icon: 'warning',
@@ -271,7 +259,6 @@ const BasicTable = () => {
     } else if (type === 'view') {
       router.push(`/employee/view/${id}`)
     } else if (type === 'edit') {
-      console.log('🚀 Navigating to edit page with ID:', id)
       router.push(`/employee/edit/${id}`)
     }
   }

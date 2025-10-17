@@ -18,7 +18,6 @@ import { clearToken, setToken } from '@/store/authSlice'
 import { jwtDecode } from 'jwt-decode'
 
 const ReactSwal = withReactContent(Swal)
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
 let isShowingSessionAlert = false
 
@@ -128,11 +127,9 @@ const AddCategoryPage = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('')
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoadingCategories, setIsLoadingCategories] = useState(false)
-  
-  // Use ref for addToast to avoid dependency issues
+
   const addToastRef = useRef(addToast)
 
-  // Update the ref when addToast changes
   useEffect(() => {
     addToastRef.current = addToast
   }, [addToast])
@@ -201,8 +198,8 @@ const AddCategoryPage = () => {
             setIsAuthChecking(false)
             return
           }
-        } catch (error) {
-          console.error('Error parsing stored user data:', error)
+        } catch {
+          // Silent catch for production
         }
       }
 
@@ -212,7 +209,6 @@ const AddCategoryPage = () => {
     checkAuth()
   }, [dispatch, token, handleTokenExpired])
 
-  // Fetch categories when component mounts and token is available
   useEffect(() => {
     let isMounted = true
 
@@ -225,17 +221,13 @@ const AddCategoryPage = () => {
         
         if (!isMounted) return;
 
-        // Handle both response formats - direct array or object with data property
         let categoriesData: Category[] = [];
         
         if (Array.isArray(response)) {
-          // If response is directly an array
           categoriesData = response;
         } else if (response && typeof response === 'object' && Array.isArray(response.data)) {
-          // If response has data property that is an array
           categoriesData = response.data;
         } else {
-          console.error('Unexpected response format:', response);
           addToastRef.current('Failed to load categories - unexpected format', { toastClass: 'bg-danger', delay: 3000 });
           return;
         }
@@ -248,7 +240,6 @@ const AddCategoryPage = () => {
         if (error.message.includes('Session expired')) {
           return;
         }
-        console.error('Error fetching categories:', error);
         addToastRef.current('Failed to load categories', { toastClass: 'bg-danger', delay: 3000 });
       } finally {
         if (isMounted) {
@@ -264,7 +255,7 @@ const AddCategoryPage = () => {
     return () => {
       isMounted = false
     }
-  }, [isAuthChecking, token, handleTokenExpired]) // Removed addToast from dependencies
+  }, [isAuthChecking, token, handleTokenExpired])
 
   const addSubcategory = () => {
     append({ name: '' })
@@ -309,17 +300,14 @@ const AddCategoryPage = () => {
 
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') {
-          // Check both possible success formats
           const response = result.value;
           if ((response.status === true) || (response && response.id)) {
             successCount++;
           } else {
             errorCount++;
-            console.error(`Failed to create subcategory "${validSubcategories[index].name}":`, response);
           }
         } else {
           errorCount++;
-          console.error(`Failed to create subcategory "${validSubcategories[index].name}":`, result.reason);
         }
       });
 
@@ -433,7 +421,7 @@ const AddCategoryPage = () => {
                           </FormLabel>
                           <Button 
                             type="button" 
-                            variant="outline-primary" 
+                            variant="primary" 
                             size="sm"
                             onClick={addSubcategory}
                           >
@@ -490,6 +478,7 @@ const AddCategoryPage = () => {
                     </Button>
                     <Button 
                       type="submit" 
+                      variant="primary"
                       disabled={formState.isSubmitting || !selectedCategoryId.trim()} 
                       className="flex-fill"
                     >

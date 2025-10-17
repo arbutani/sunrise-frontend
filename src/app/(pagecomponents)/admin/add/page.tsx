@@ -20,7 +20,6 @@ import { jwtDecode } from 'jwt-decode'
 const ReactSwal = withReactContent(Swal)
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-
 let isShowingSessionAlert = false
 
 class ApiClient {
@@ -32,7 +31,6 @@ class ApiClient {
   
   private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
     if (response.status === 401) {
-      
       await onTokenExpired()
       throw new Error('Session expired');
     }
@@ -135,7 +133,6 @@ const AddAdminPage = () => {
   const { errors } = formState
 
   const handleTokenExpired = async () => {
-   
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -147,7 +144,6 @@ const AddAdminPage = () => {
         allowOutsideClick: false,
       })
       
-   
       setTimeout(() => {
         isShowingSessionAlert = false
       }, 1000)
@@ -158,7 +154,6 @@ const AddAdminPage = () => {
     router.push('/login')
   }
 
-  
   useEffect(() => {
     const checkAuth = async () => {
       if (token && validateToken(token)) {
@@ -180,7 +175,6 @@ const AddAdminPage = () => {
         }
       }
 
-     
       await handleTokenExpired()
     }
 
@@ -189,7 +183,6 @@ const AddAdminPage = () => {
 
   const onSubmit = async (values: any) => {
     try {
-      
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
@@ -202,7 +195,6 @@ const AddAdminPage = () => {
         type: 'admin',
       }
 
-      
       const res = await apiClient.post('/employee-management', payload, token, handleTokenExpired)
 
       if (res.status === true) {
@@ -221,7 +213,6 @@ const AddAdminPage = () => {
       }
     } catch (err: any) {
       if (err instanceof Error && err.message.includes('Session expired')) {
-      
         return
       }
       addToast(err?.message || 'Something went wrong', {

@@ -21,7 +21,6 @@ import { jwtDecode } from 'jwt-decode'
 const ReactSwal = withReactContent(Swal)
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-
 let isShowingSessionAlert = false
 
 class ApiClient {
@@ -33,7 +32,6 @@ class ApiClient {
   
   private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
     if (response.status === 401) {
-      
       await onTokenExpired()
       throw new Error('Session expired');
     }
@@ -157,7 +155,6 @@ const EmployeePage = () => {
   const { errors } = formState
 
   const handleTokenExpired = async () => {
-    
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -168,8 +165,7 @@ const EmployeePage = () => {
         confirmButtonText: 'OK',
         allowOutsideClick: false,
       })
-      
- 
+
       setTimeout(() => {
         isShowingSessionAlert = false
       }, 1000)
@@ -187,7 +183,6 @@ const EmployeePage = () => {
         return
       }
 
-     
       const stored = localStorage.getItem('user')
       if (stored) {
         try {
@@ -202,7 +197,6 @@ const EmployeePage = () => {
         }
       }
 
-     
       await handleTokenExpired()
     }
 
@@ -211,7 +205,6 @@ const EmployeePage = () => {
 
   const onSubmit = async (values: any) => {
     try {
-      
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
@@ -249,7 +242,6 @@ const EmployeePage = () => {
       }
     } catch (error: any) {
       if (error instanceof Error && error.message.includes('Session expired')) {
-        
         return
       }
       console.error('Error creating employee:', error)

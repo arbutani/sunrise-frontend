@@ -107,14 +107,11 @@ const validateToken = (token: string): boolean => {
   }
 };
 
-// Function to parse your custom date format
 const parseCustomDate = (dateString: string): Date => {
-  // Format: "14-10-2025 04:20 AM"
   const [datePart, timePart, period] = dateString.split(' ');
   const [day, month, year] = datePart.split('-').map(Number);
   const [hours, minutes] = timePart.split(':').map(Number);
   
-  // Convert to 24-hour format
   let hours24 = hours;
   if (period === 'PM' && hours !== 12) {
     hours24 += 12;

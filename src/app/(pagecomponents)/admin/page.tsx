@@ -23,7 +23,6 @@ import Toaster from '@/components/helper/toaster'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
-
 let isShowingSessionAlert = false
 
 class ApiClient {
@@ -35,7 +34,6 @@ class ApiClient {
   
   private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
     if (response.status === 401) {
-      
       await onTokenExpired()
       throw new Error('Session expired');
     }
@@ -124,7 +122,6 @@ const BasicTable = () => {
   const isAdmin = tokenPayload?.type === 'admin'
 
   const handleTokenExpired = async () => {
-    
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -136,7 +133,6 @@ const BasicTable = () => {
         allowOutsideClick: false,
       })
       
-    
       setTimeout(() => {
         isShowingSessionAlert = false
       }, 1000)
@@ -168,7 +164,6 @@ const BasicTable = () => {
         }
       }
 
-      
       await handleTokenExpired()
     }
     checkAuth()
@@ -194,14 +189,11 @@ const BasicTable = () => {
         return
       }
 
-      
       const data = await apiClient.get('/employee-management', token, handleTokenExpired)
-      
       const filteredAdmins = data.filter((emp: any) => emp.type === 'admin')
       setAdmins(filteredAdmins)
     } catch (error) {
       if (error instanceof Error && error.message.includes('Session expired')) {
-        
         return
       }
       console.error('Error fetching admins:', error)
@@ -238,14 +230,11 @@ const BasicTable = () => {
 
     if (result.isConfirmed) {
       try {
-        
         await apiClient.delete(`/employee-management/${id}`, token, handleTokenExpired)
-
         setAdmins(prev => prev.filter(admin => admin.id !== id))
         addToast('Admin deleted successfully', { toastClass: 'bg-success', delay: 3000 })
       } catch (error) {
         if (error instanceof Error && error.message.includes('Session expired')) {
-          
           return
         }
         addToast('Failed to delete admin', { toastClass: 'bg-danger', delay: 3000 })
