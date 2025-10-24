@@ -107,14 +107,11 @@ const validateToken = (token: string): boolean => {
   }
 };
 
-// Function to parse your custom date format
 const parseCustomDate = (dateString: string): Date => {
-  // Format: "14-10-2025 04:20 AM"
   const [datePart, timePart, period] = dateString.split(' ');
   const [day, month, year] = datePart.split('-').map(Number);
   const [hours, minutes] = timePart.split(':').map(Number);
   
-  // Convert to 24-hour format
   let hours24 = hours;
   if (period === 'PM' && hours !== 12) {
     hours24 += 12;
@@ -130,8 +127,10 @@ const BasicTable = () => {
   const table = useRef<HTMLTableElement>(null)
   const [dataTable, setDataTable] = useState<any>(null)
   const [subcategories, setSubcategories] = useState<any[]>([])
+  const [categories, setCategories] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthChecking, setIsAuthChecking] = useState(true)
+  const [hasFetchError, setHasFetchError] = useState(false)
   const router = useRouter()
   const dispatch = useDispatch()
   const { toasts, addToast, removeToast } = useToasts()
@@ -159,6 +158,82 @@ const BasicTable = () => {
     router.push('/login')
   }
 
+  const fetchCategories = async () => {
+    try {
+      if (!token || !validateToken(token)) {
+        await handleTokenExpired()
+        return
+      }
+      const data = await apiClient.get('/categories', token, handleTokenExpired)
+      setCategories(data)
+    } catch (error: any) {
+      if (error instanceof Error && error.message.includes('Session expired')) {
+        return
+      }
+    }
+  }
+
+  const fetchSubcategories = async () => {
+    try {
+      setIsLoading(true)
+      setHasFetchError(false)
+      if (!token || !validateToken(token)) {
+        await handleTokenExpired()
+        return
+      }
+
+      const response = await fetch(`${API_URL}/subcategories`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        await handleTokenExpired()
+        return
+      }
+
+      if (response.status === 404) {
+        setSubcategories([])
+        return
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.status === false) {
+        setSubcategories([])
+      } else if (Array.isArray(data)) {
+        setSubcategories(data)
+      } else if (data.data && Array.isArray(data.data)) {
+        setSubcategories(data.data)
+      } else {
+        setSubcategories([])
+      }
+    } catch (error: any) {
+      if (error instanceof Error && error.message.includes('Session expired')) {
+        return
+      }
+      if (!error.message.includes('404')) {
+        setHasFetchError(true)
+      } else {
+        setSubcategories([])
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const getCategoryName = (categoryId: string) => {
+    const category = categories.find(cat => cat.id === categoryId)
+    return category ? category.name : 'Unknown Category'
+  }
+
   useEffect(() => {
     document.title = `${appTitle} Subcategories Management`
   }, [])
@@ -180,7 +255,6 @@ const BasicTable = () => {
             return
           }
         } catch (error) {
-          console.error('Error parsing stored user data:', error)
         }
       }
 
@@ -190,31 +264,27 @@ const BasicTable = () => {
     checkAuth()
   }, [dispatch, token])
 
-  const fetchSubcategories = async () => {
-    try {
-      setIsLoading(true)
-      if (!token || !validateToken(token)) {
-        await handleTokenExpired()
-        return
-      }
-
-      const data = await apiClient.get('/subcategories', token, handleTokenExpired)
-      setSubcategories(data)
-    } catch (error: any) {
-      if (error instanceof Error && error.message.includes('Session expired')) {
-        return
-      }
-      addToast('Failed to fetch subcategories', { toastClass: 'bg-danger', delay: 3000 })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   useEffect(() => {
     if (token && validateToken(token)) {
-      fetchSubcategories()
+      const fetchData = async () => {
+        await Promise.all([fetchCategories(), fetchSubcategories()])
+      }
+      fetchData()
     } else {
       setIsLoading(false)
+    }
+  }, [token])
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (token && validateToken(token)) {
+        fetchSubcategories()
+      }
+    }
+
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
     }
   }, [token])
 
@@ -280,8 +350,9 @@ const BasicTable = () => {
         columns: [
           { title: 'Name', data: 'name' },
           { 
-            title: 'Category ID', 
-            data: 'category_id'
+            title: 'Category', 
+            data: 'category_id',
+            render: (data: any) => getCategoryName(data)
           },
           { 
             title: 'Created At', 
@@ -348,7 +419,7 @@ const BasicTable = () => {
       })
       setDataTable(dt)
     }
-  }, [subcategories, dataTable])
+  }, [subcategories, dataTable, categories])
 
   useEffect(() => {
     if (dataTable && subcategories.length > 0) {
@@ -389,6 +460,19 @@ const BasicTable = () => {
             </div>
             <p className="mt-2">Loading subcategories...</p>
           </div>
+        ) : hasFetchError ? (
+          <div className="text-center p-4">
+            <div className="text-danger mb-2">
+              <i className="mdi mdi-alert-circle-outline fs-1"></i>
+            </div>
+            <p className="text-danger">Failed to load subcategories</p>
+            <button 
+              onClick={fetchSubcategories} 
+              className="btn btn-primary mt-2"
+            >
+              <i className="mdi mdi-reload me-1"></i>Try Again
+            </button>
+          </div>
         ) : subcategories.length === 0 ? (
           <div className="text-center p-4">
             <p>No subcategories found.</p>
@@ -404,7 +488,7 @@ const BasicTable = () => {
             <thead className="thead-sm text-uppercase fs-xxs">
               <tr>
                 <th>Name</th>
-                <th>Category ID</th>
+                <th>Category</th>
                 <th>Created At</th>
                 <th>Updated At</th>
                 <th>Actions</th>

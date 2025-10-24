@@ -75,15 +75,9 @@ const validateToken = (token: string): boolean => {
   }
 };
 
-interface Subcategory {
-  id?: string;
-  name: string;
-}
-
 interface CategoryData {
   id: string;
   name: string;
-  subcategories: Subcategory[];
 }
 
 const CategoryUpdatePage = () => {
@@ -95,8 +89,6 @@ const CategoryUpdatePage = () => {
   const [loading, setLoading] = useState(true);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [subcategoryInput, setSubcategoryInput] = useState("");
-  const [existingSubcategories, setExistingSubcategories] = useState<Subcategory[]>([]);
 
   useEffect(() => {
     document.title = `${appTitle}Update Category`;
@@ -172,13 +164,6 @@ const CategoryUpdatePage = () => {
       if (res.status && res.data) {
         const data: CategoryData = res.data;
         reset({ name: data.name || "" });
-        let existingSubs: Subcategory[] = [];
-        if (Array.isArray(data.subcategories)) {
-          existingSubs = data.subcategories
-            .map((sub: any) => ({ id: sub.id, name: sub.name }))
-            .filter((sub: Subcategory) => sub.name);
-        }
-        setExistingSubcategories(existingSubs);
       } else {
         addToast(res.message || "Failed to fetch category data.", { toastClass: "bg-danger", delay: 3000 });
       }
@@ -194,30 +179,6 @@ const CategoryUpdatePage = () => {
     if (!isAuthChecking && categoryId && token) fetchCategory(categoryId);
   }, [isAuthChecking, categoryId, token]);
 
-  const handleSubcategoryInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSubcategoryInput(e.target.value);
-  };
-
-  const addSubcategory = () => {
-    if (subcategoryInput.trim()) {
-      const trimmedInput = subcategoryInput.trim();
-      const isDuplicate = existingSubcategories.some(
-        (sub) => sub.name.toLowerCase() === trimmedInput.toLowerCase()
-      );
-      if (isDuplicate) {
-        addToast("Subcategory already exists!", { toastClass: "bg-warning", delay: 3000 });
-        setSubcategoryInput("");
-        return;
-      }
-      setExistingSubcategories((prev) => [...prev, { name: trimmedInput }]);
-      setSubcategoryInput("");
-    }
-  };
-
-  const removeSubcategory = (index: number) => {
-    setExistingSubcategories((prev) => prev.filter((_, i) => i !== index));
-  };
-
   const onSubmit = async (values: any) => {
     try {
       if (!categoryId) {
@@ -225,24 +186,7 @@ const CategoryUpdatePage = () => {
         return;
       }
 
-      let finalSubcategories = [...existingSubcategories];
-
-      if (subcategoryInput.trim()) {
-        const trimmedInput = subcategoryInput.trim();
-        const isDuplicate = finalSubcategories.some(
-          (sub) => sub.name.toLowerCase() === trimmedInput.toLowerCase()
-        );
-        if (!isDuplicate) {
-          finalSubcategories = [...finalSubcategories, { name: trimmedInput }];
-          setExistingSubcategories(finalSubcategories);
-        }
-        setSubcategoryInput("");
-      }
-
-      const putData: any = { name: values.name };
-      if (finalSubcategories.length > 0) {
-        putData.subcategories = finalSubcategories.map((sub) => ({ name: sub.name }));
-      }
+      const putData = { name: values.name };
 
       const res = await apiClient.put(`/categories/${categoryId}`, putData, token!, handleTokenExpired);
       if (res.status) {
@@ -311,69 +255,6 @@ const CategoryUpdatePage = () => {
                       {errors.name?.message}
                     </Form.Control.Feedback>
                   </Form.Group>
-
-                  <Form.Group className="mb-3">
-                    <FormLabel>Add Subcategory</FormLabel>
-                    <div className="d-flex gap-2 mb-2">
-                      <FormControl
-                        type="text"
-                        value={subcategoryInput}
-                        onChange={handleSubcategoryInput}
-                        placeholder="Enter subcategory name"
-                        onKeyPress={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addSubcategory();
-                          }
-                        }}
-                      />
-                      <Button
-                        variant="outline-primary"
-                        onClick={addSubcategory}
-                        type="button"
-                        disabled={!subcategoryInput.trim()}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    <Form.Text className="text-muted">
-                      Add subcategories one by one. You can also type and click "Update Category" - it will be
-                      automatically added.
-                    </Form.Text>
-                  </Form.Group>
-
-                  {existingSubcategories.length > 0 && (
-                    <Form.Group className="mb-3">
-                      <FormLabel>Subcategories:</FormLabel>
-                      <div className="border rounded p-3">
-                        {existingSubcategories.map((sub, index) => (
-                          <div
-                            key={index}
-                            className="d-flex justify-content-between align-items-center mb-2 p-2 bg-light rounded"
-                          >
-                            <span>{sub.name}</span>
-                            <Button
-                              variant="outline-danger"
-                              size="sm"
-                              onClick={() => removeSubcategory(index)}
-                              type="button"
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </Form.Group>
-                  )}
-
-                  {subcategoryInput.trim() && (
-                    <div className="alert alert-info mb-3">
-                      <small>
-                        <strong>Note:</strong> "{subcategoryInput}" will be automatically added when you click
-                        "Update Category".
-                      </small>
-                    </div>
-                  )}
 
                   <div className="d-grid mt-3">
                     <Button type="submit" disabled={isSubmitting} size="lg">

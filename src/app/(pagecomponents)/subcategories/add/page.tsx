@@ -337,7 +337,7 @@ const AddCategoryPage = () => {
           confirmButtonColor: '#3085d6',
         });
         
-        router.push('/categories');
+        router.push('/subcategories');
       } else {
         addToast('Failed to create any subcategories', { 
           toastClass: 'bg-danger', 

@@ -2,10 +2,10 @@
 
 import { useEffect, Fragment, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as Yup from 'yup'
-import { Container, Card, Form, FormLabel, FormControl, Button, Row, Col, Spinner, InputGroup } from 'react-bootstrap'
+import { Container, Card, Form, FormLabel, FormControl, Button, Row, Col, Spinner } from 'react-bootstrap'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
 import { useToasts } from '@/components/helper/useToasts'
 import Toaster from '@/components/helper/toaster'
@@ -104,13 +104,8 @@ const validateToken = (token: string): boolean => {
   }
 };
 
-interface Subcategory {
-  name: string;
-}
-
 interface CategoryFormData {
   name: string;
-  subcategories: Subcategory[];
 }
 
 const AddCategoryPage = () => {
@@ -126,24 +121,13 @@ const AddCategoryPage = () => {
 
   const validationSchema = Yup.object().shape({
     name: Yup.string().required('Category Name is required'),
-    subcategories: Yup.array().of(
-      Yup.object().shape({
-        name: Yup.string().required('Subcategory name is required'),
-      })
-    ),
   })
 
-  const { register, handleSubmit, formState, control, reset } = useForm<CategoryFormData>({
+  const { register, handleSubmit, formState, reset } = useForm<CategoryFormData>({
     resolver: yupResolver(validationSchema),
     defaultValues: {
       name: '',
-      subcategories: [],
     },
-  })
-
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'subcategories',
   })
 
   const { errors } = formState
@@ -197,14 +181,6 @@ const AddCategoryPage = () => {
     checkAuth()
   }, [dispatch, token])
 
-  const addSubcategory = () => {
-    append({ name: '' })
-  }
-
-  const removeSubcategory = (index: number) => {
-    remove(index)
-  }
-
   const onSubmit = async (values: CategoryFormData) => {
     try {
       if (!token || !validateToken(token)) {
@@ -214,7 +190,6 @@ const AddCategoryPage = () => {
 
       const payload = {
         name: values.name,
-        subcategories: values.subcategories.filter(sub => sub.name.trim() !== ''),
       }
 
       const res = await apiClient.post('/categories', payload, token, handleTokenExpired)
@@ -284,80 +259,14 @@ const AddCategoryPage = () => {
                           {errors.name?.message as string}
                         </Form.Control.Feedback>
                       </div>
-
-                      <div className="mb-3">
-                        <div className="d-flex justify-content-between align-items-center mb-3">
-                          <FormLabel className="mb-0">Subcategories (Optional)</FormLabel>
-                          <Button 
-                            type="button" 
-                            variant="outline-primary" 
-                            size="sm"
-                            onClick={addSubcategory}
-                          >
-                            + Add Subcategory
-                          </Button>
-                        </div>
-                        
-                        {fields.length === 0 ? (
-                          <div className="text-center p-4 border border-dashed rounded">
-                            <p className="text-muted mb-3">No subcategories added yet</p>
-                            <Button 
-                              type="button" 
-                              variant="outline-primary"
-                              onClick={addSubcategory}
-                            >
-                              Add First Subcategory
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {fields.map((field, index) => (
-                              <div key={field.id} className="subcategory-item">
-                                <InputGroup>
-                                  <FormControl
-                                    type="text"
-                                    placeholder={`Enter subcategory name ${index + 1}`}
-                                    {...register(`subcategories.${index}.name` as const)}
-                                    isInvalid={!!errors.subcategories?.[index]?.name}
-                                  />
-                                  <Button
-                                    variant="outline-danger"
-                                    onClick={() => removeSubcategory(index)}
-                                    disabled={formState.isSubmitting}
-                                  >
-                                    Remove
-                                  </Button>
-                                  <Form.Control.Feedback type="invalid">
-                                    {errors.subcategories?.[index]?.name?.message}
-                                  </Form.Control.Feedback>
-                                </InputGroup>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        
-                        {fields.length > 0 && (
-                          <Form.Text className="text-muted">
-                            Subcategories are optional. Empty subcategories will be ignored.
-                          </Form.Text>
-                        )}
-                      </div>
                     </Col>
                   </Row>
 
-                  <div className="d-flex gap-2 mt-4">
-                    <Button 
-                      type="button" 
-                      variant="outline-secondary" 
-                      onClick={() => router.push('/categories')}
-                      disabled={formState.isSubmitting}
-                    >
-                      Cancel
-                    </Button>
+                  <div className="mt-4">
                     <Button 
                       type="submit" 
                       disabled={formState.isSubmitting} 
-                      className="flex-fill"
+                      className="w-100"
                     >
                       {formState.isSubmitting ? 'Creating Category...' : 'Create Category'}
                     </Button>
