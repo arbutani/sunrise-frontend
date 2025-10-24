@@ -8,7 +8,7 @@ import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
 import ReactDOMServer from 'react-dom/server'
 import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Swal from 'sweetalert2'
 import { useRouter } from 'next/navigation'
@@ -107,22 +107,40 @@ const validateToken = (token: string): boolean => {
   }
 };
 
+const parseCustomDate = (dateString: string): Date => {
+  if (!dateString) return new Date();
+  
+  const [datePart, timePart, period] = dateString.split(' ');
+  const [day, month, year] = datePart.split('-').map(Number);
+  const [hours, minutes] = timePart.split(':').map(Number);
+  
+  let hours24 = hours;
+  if (period === 'PM' && hours !== 12) {
+    hours24 += 12;
+  } else if (period === 'AM' && hours === 12) {
+    hours24 = 0;
+  }
+  
+  return new Date(year, month - 1, day, hours24, minutes);
+};
+
 const BasicTable = () => {
   DataTable.use(DT)
   const table = useRef<HTMLTableElement>(null)
-  const [dataTable, setDataTable] = useState<any>(null)
-  const router = useRouter()
-  const dispatch = useDispatch()
+  const dataTableRef = useRef<any>(null)
   const [countries, setCountries] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthChecking, setIsAuthChecking] = useState(true)
+  const [hasFetchError, setHasFetchError] = useState(false)
+  const router = useRouter()
+  const dispatch = useDispatch()
   const { toasts, addToast, removeToast } = useToasts()
 
   const token = useSelector((state: RootState) => state.auth.token)
   const tokenPayload = token ? jwtDecode<any>(token) : null
   const isAdmin = tokenPayload?.type === 'admin'
 
-  const handleTokenExpired = async () => {
+  const handleTokenExpired = useCallback(async () => {
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -142,7 +160,7 @@ const BasicTable = () => {
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
-  }
+  }, [dispatch, router])
 
   useEffect(() => {
     document.title = `${appTitle} Country Management`
@@ -173,7 +191,41 @@ const BasicTable = () => {
     }
 
     checkAuth()
-  }, [dispatch, token])
+  }, [dispatch, token, handleTokenExpired])
+
+  const fetchCountries = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setHasFetchError(false)
+      if (!token || !validateToken(token)) {
+        await handleTokenExpired()
+        return
+      }
+
+      const data = await apiClient.get('/country', token, handleTokenExpired)
+      
+      if (data.status === false) {
+        setCountries([])
+      } else if (Array.isArray(data)) {
+        setCountries(data)
+      } else if (data.data && Array.isArray(data.data)) {
+        setCountries(data.data)
+      } else {
+        setCountries([])
+      }
+    } catch (error: any) {
+      if (error instanceof Error && error.message.includes('Session expired')) {
+        return
+      }
+      if (!error.message?.includes('404')) {
+        setHasFetchError(true)
+      } else {
+        setCountries([])
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }, [token, handleTokenExpired])
 
   useEffect(() => {
     if (token && validateToken(token)) {
@@ -181,29 +233,36 @@ const BasicTable = () => {
     } else {
       setIsLoading(false)
     }
-  }, [token])
+  }, [token, fetchCountries])
 
-  const fetchCountries = async () => {
-    try {
-      setIsLoading(true)
-      if (!token || !validateToken(token)) {
-        await handleTokenExpired()
-        return
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (token && validateToken(token)) {
+        try {
+          const data = await apiClient.get('/country', token, handleTokenExpired)
+          
+          if (data.status === false) {
+            setCountries([])
+          } else if (Array.isArray(data)) {
+            setCountries(data)
+          } else if (data.data && Array.isArray(data.data)) {
+            setCountries(data.data)
+          } else {
+            setCountries([])
+          }
+        } catch (error) {
+          console.error('Error fetching countries on focus:', error)
+        }
       }
-
-      const data = await apiClient.get('/country', token, handleTokenExpired)
-      setCountries(data)
-    } catch (error: any) {
-      if (error instanceof Error && error.message.includes('Session expired')) {
-        return
-      }
-      addToast('Failed to fetch countries', { toastClass: 'bg-danger', delay: 3000 })
-    } finally {
-      setIsLoading(false)
     }
-  }
 
-  const handleDelete = async (id: string) => {
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [token, handleTokenExpired])
+
+  const handleDelete = useCallback(async (id: string) => {
     if (!token || !validateToken(token)) {
       await handleTokenExpired()
       return
@@ -231,8 +290,21 @@ const BasicTable = () => {
     if (result.isConfirmed) {
       try {
         await apiClient.delete(`/country/${id}`, token, handleTokenExpired)
-        setCountries(prev => prev.filter(country => country.id !== id))
+        
+        if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+          try {
+            dataTableRef.current.destroy()
+            dataTableRef.current = null
+          } catch (error) {
+            console.error('Error destroying DataTable:', error)
+          }
+        }
+        
+        const updatedCountries = countries.filter(country => country.id !== id)
+        setCountries(updatedCountries)
+        
         addToast('Country deleted successfully', { toastClass: 'bg-success', delay: 3000 })
+        
       } catch (error: any) {
         if (error instanceof Error && error.message.includes('Session expired')) {
           return
@@ -241,9 +313,9 @@ const BasicTable = () => {
         fetchCountries()
       }
     }
-  }
+  }, [token, handleTokenExpired, addToast, fetchCountries, countries, isAdmin])
 
-  const handleTableButtonClick = async (id: string, type: 'edit' | 'delete') => {
+  const handleTableButtonClick = useCallback(async (id: string, type: 'edit' | 'delete') => {
     if (!isAdmin) {
       await Swal.fire({
         icon: 'warning',
@@ -258,16 +330,37 @@ const BasicTable = () => {
     } else if (type === 'edit') {
       router.push(`/country/edit/${id}`)
     }
-  }
+  }, [handleDelete, router, isAdmin])
 
   useEffect(() => {
-    if (countries.length > 0 && table.current && !dataTable) {
+    if (!table.current || countries.length === 0) {
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy()
+          dataTableRef.current = null
+        } catch (error) {
+          console.error('Error destroying DataTable:', error)
+        }
+      }
+      return
+    }
+
+    if (dataTableRef.current && $.fn.DataTable.isDataTable(table.current)) {
+      try {
+        dataTableRef.current.destroy()
+      } catch (error) {
+        console.error('Error destroying DataTable:', error)
+      }
+    }
+
+    try {
       const dt = $(table.current).DataTable({
         responsive: true,
         serverSide: false,
         processing: true,
         data: countries,
         destroy: true,
+        autoWidth: false,
         language: {
           paginate: {
             first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
@@ -279,11 +372,20 @@ const BasicTable = () => {
           zeroRecords: 'No matching records found',
         },
         columns: [
-          { title: 'Country Name', data: 'country_name' },
-          { title: 'Currency Code', data: 'currency_code' },
+          { 
+            title: 'Country Name', 
+            data: 'country_name',
+            width: '20%'
+          },
+          { 
+            title: 'Currency Code', 
+            data: 'currency_code',
+            width: '15%'
+          },
           { 
             title: 'Conversion Rate', 
             data: 'conversion_rate',
+            width: '15%',
             render: (data: any) => {
               return typeof data === 'number' ? data.toFixed(2) : data
             }
@@ -291,20 +393,10 @@ const BasicTable = () => {
           { 
             title: 'Created At', 
             data: 'createdAt',
+            width: '20%',
             render: (data: any) => {
-              if (!data) return '-'
-              
               try {
-                const [datePart, timePart, period] = data.split(' ')
-                const [day, month, year] = datePart.split('-')
-                const [hours, minutes] = timePart.split(':')
-                
-                let hours24 = parseInt(hours)
-                if (period === 'PM' && hours24 !== 12) hours24 += 12
-                if (period === 'AM' && hours24 === 12) hours24 = 0
-                
-                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), hours24, parseInt(minutes))
-                
+                const date = parseCustomDate(data);
                 return date.toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'short',
@@ -312,28 +404,18 @@ const BasicTable = () => {
                   hour: '2-digit',
                   minute: '2-digit'
                 })
-              } catch {
-                return data 
+              } catch (error) {
+                return 'Invalid Date';
               }
             }
           },
           { 
             title: 'Updated At', 
             data: 'updatedAt',
+            width: '20%',
             render: (data: any) => {
-              if (!data) return '-'
-              
               try {
-                const [datePart, timePart, period] = data.split(' ')
-                const [day, month, year] = datePart.split('-')
-                const [hours, minutes] = timePart.split(':')
-                
-                let hours24 = parseInt(hours)
-                if (period === 'PM' && hours24 !== 12) hours24 += 12
-                if (period === 'AM' && hours24 === 12) hours24 = 0
-                
-                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), hours24, parseInt(minutes))
-                
+                const date = parseCustomDate(data);
                 return date.toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'short',
@@ -341,8 +423,8 @@ const BasicTable = () => {
                   hour: '2-digit',
                   minute: '2-digit'
                 })
-              } catch {
-                return data 
+              } catch (error) {
+                return 'Invalid Date';
               }
             }
           },
@@ -351,49 +433,46 @@ const BasicTable = () => {
             data: null,
             orderable: false,
             searchable: false,
-            render: function (data: any, type: any, row: any) {
-              const htmlString = `
+            width: '10%',
+            render: (data: any, type: any, row: any) => {
+              return `
                 <div class="d-flex gap-2">
                   <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
                   <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
                 </div>
               `;
-              return htmlString;
             },
           },
         ],
         drawCallback: function () {
-          $(this.api().table().body()).find('.btn-edit, .btn-delete').off('click').on('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const id = $(this).data('id');
-            const buttonType = $(this).hasClass('btn-edit') ? 'edit' : 'delete';
-            
-            handleTableButtonClick(id, buttonType);
-          });
+          $('.btn-edit, .btn-delete').off('click').on('click', function (e) {
+            e.preventDefault()
+            e.stopPropagation()
+            const id = $(this).data('id')
+            const type = $(this).hasClass('btn-edit') ? 'edit' : 'delete'
+            handleTableButtonClick(id, type)
+          })
         }
       })
-      setDataTable(dt)
+      
+      dataTableRef.current = dt
+    } catch (error) {
+      console.error('Error creating DataTable:', error)
     }
-  }, [countries, dataTable])
-
-  useEffect(() => {
-    if (dataTable && countries.length > 0) {
-      dataTable.clear()
-      dataTable.rows.add(countries)
-      dataTable.draw()
-    }
-  }, [countries, dataTable])
+  }, [countries, handleTableButtonClick])
 
   useEffect(() => {
     return () => {
-      if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
-        dataTable.destroy(true)
-        setDataTable(null)
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy(true)
+          dataTableRef.current = null
+        } catch (error) {
+          console.error('Error cleaning up DataTable:', error)
+        }
       }
     }
-  }, [dataTable])
+  }, [])
 
   if (isAuthChecking) {
     return (
@@ -417,6 +496,19 @@ const BasicTable = () => {
             </div>
             <p className="mt-2">Loading countries...</p>
           </div>
+        ) : hasFetchError ? (
+          <div className="text-center p-4">
+            <div className="text-danger mb-2">
+              <i className="mdi mdi-alert-circle-outline fs-1"></i>
+            </div>
+            <p className="text-danger">Failed to load countries</p>
+            <button 
+              onClick={fetchCountries} 
+              className="btn btn-primary mt-2"
+            >
+              <i className="mdi mdi-reload me-1"></i>Try Again
+            </button>
+          </div>
         ) : countries.length === 0 ? (
           <div className="text-center p-4">
             <p>No countries found.</p>
@@ -425,21 +517,23 @@ const BasicTable = () => {
             </Link>
           </div>
         ) : (
-          <table
-            ref={table}
-            className="table table-striped dt-responsive align-middle mb-0 w-100"
-          >
-            <thead className="thead-sm text-uppercase fs-xxs">
-              <tr>
-                <th>Country Name</th>
-                <th>Currency Code</th>
-                <th>Conversion Rate</th>
-                <th>Created At</th>
-                <th>Updated At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-          </table>
+          <div className="table-responsive">
+            <table
+              ref={table}
+              className="table table-striped dt-responsive align-middle mb-0 w-100"
+            >
+              <thead className="thead-sm text-uppercase fs-xxs">
+                <tr>
+                  <th>Country Name</th>
+                  <th>Currency Code</th>
+                  <th>Conversion Rate</th>
+                  <th>Created At</th>
+                  <th>Updated At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
         )}
       </ComponentCard>
     </Fragment>
@@ -474,8 +568,6 @@ const PageContent = () => (
   </Fragment>
 )
 
-const Page = () => {
-  return <PageContent />
-}
+const Page = () => <PageContent />
 
 export default Page

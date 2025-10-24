@@ -8,7 +8,7 @@ import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
 import ReactDOMServer from 'react-dom/server'
 import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Swal from 'sweetalert2'
 import { useRouter } from 'next/navigation'
@@ -108,6 +108,8 @@ const validateToken = (token: string): boolean => {
 };
 
 const parseCustomDate = (dateString: string): Date => {
+  if (!dateString) return new Date();
+  
   const [datePart, timePart, period] = dateString.split(' ');
   const [day, month, year] = datePart.split('-').map(Number);
   const [hours, minutes] = timePart.split(':').map(Number);
@@ -125,16 +127,17 @@ const parseCustomDate = (dateString: string): Date => {
 const BasicTable = () => {
   DataTable.use(DT)
   const table = useRef<HTMLTableElement>(null)
-  const [dataTable, setDataTable] = useState<any>(null)
+  const dataTableRef = useRef<any>(null)
   const [categories, setCategories] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthChecking, setIsAuthChecking] = useState(true)
+  const [hasFetchError, setHasFetchError] = useState(false)
   const router = useRouter()
   const dispatch = useDispatch()
   const { toasts, addToast, removeToast } = useToasts()
   const token = useSelector((state: RootState) => state.auth.token)
 
-  const handleTokenExpired = async () => {
+  const handleTokenExpired = useCallback(async () => {
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -154,7 +157,7 @@ const BasicTable = () => {
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
-  }
+  }, [dispatch, router])
 
   useEffect(() => {
     document.title = `${appTitle} Categories Management`
@@ -185,27 +188,41 @@ const BasicTable = () => {
     }
 
     checkAuth()
-  }, [dispatch, token])
+  }, [dispatch, token, handleTokenExpired])
 
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     try {
       setIsLoading(true)
+      setHasFetchError(false)
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
       }
 
       const data = await apiClient.get('/categories', token, handleTokenExpired)
-      setCategories(data)
+      
+      if (data.status === false) {
+        setCategories([])
+      } else if (Array.isArray(data)) {
+        setCategories(data)
+      } else if (data.data && Array.isArray(data.data)) {
+        setCategories(data.data)
+      } else {
+        setCategories([])
+      }
     } catch (error: any) {
       if (error instanceof Error && error.message.includes('Session expired')) {
         return
       }
-      addToast('Failed to fetch categories', { toastClass: 'bg-danger', delay: 3000 })
+      if (!error.message?.includes('404')) {
+        setHasFetchError(true)
+      } else {
+        setCategories([])
+      }
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [token, handleTokenExpired])
 
   useEffect(() => {
     if (token && validateToken(token)) {
@@ -213,9 +230,36 @@ const BasicTable = () => {
     } else {
       setIsLoading(false)
     }
-  }, [token])
+  }, [token, fetchCategories])
 
-  const handleDelete = async (id: string) => {
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (token && validateToken(token)) {
+        try {
+          const data = await apiClient.get('/categories', token, handleTokenExpired)
+          
+          if (data.status === false) {
+            setCategories([])
+          } else if (Array.isArray(data)) {
+            setCategories(data)
+          } else if (data.data && Array.isArray(data.data)) {
+            setCategories(data.data)
+          } else {
+            setCategories([])
+          }
+        } catch (error) {
+          console.error('Error fetching categories on focus:', error)
+        }
+      }
+    }
+
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [token, handleTokenExpired])
+
+  const handleDelete = useCallback(async (id: string) => {
     if (!token || !validateToken(token)) {
       await handleTokenExpired()
       return
@@ -234,8 +278,21 @@ const BasicTable = () => {
     if (result.isConfirmed) {
       try {
         await apiClient.delete(`/categories/${id}`, token, handleTokenExpired)
-        setCategories(prev => prev.filter(cat => cat.id !== id))
+        
+        if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+          try {
+            dataTableRef.current.destroy()
+            dataTableRef.current = null
+          } catch (error) {
+            console.error('Error destroying DataTable:', error)
+          }
+        }
+        
+        const updatedCategories = categories.filter(cat => cat.id !== id)
+        setCategories(updatedCategories)
+        
         addToast('Category deleted successfully', { toastClass: 'bg-success', delay: 3000 })
+        
       } catch (error: any) {
         if (error instanceof Error && error.message.includes('Session expired')) {
           return
@@ -244,9 +301,9 @@ const BasicTable = () => {
         fetchCategories()
       }
     }
-  }
+  }, [token, handleTokenExpired, addToast, fetchCategories, categories])
 
-  const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
+  const handleTableButtonClick = useCallback(async (id: string, type: 'edit' | 'delete' | 'view') => {
     if (type === 'delete') {
       await handleDelete(id)
     } else if (type === 'view') {
@@ -254,16 +311,37 @@ const BasicTable = () => {
     } else if (type === 'edit') {
       router.push(`/categories/edit/${id}`)
     }
-  }
+  }, [handleDelete, router])
 
   useEffect(() => {
-    if (categories.length > 0 && table.current && !dataTable) {
+    if (!table.current || categories.length === 0) {
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy()
+          dataTableRef.current = null
+        } catch (error) {
+          console.error('Error destroying DataTable:', error)
+        }
+      }
+      return
+    }
+
+    if (dataTableRef.current && $.fn.DataTable.isDataTable(table.current)) {
+      try {
+        dataTableRef.current.destroy()
+      } catch (error) {
+        console.error('Error destroying DataTable:', error)
+      }
+    }
+
+    try {
       const dt = $(table.current).DataTable({
         responsive: true,
         serverSide: false,
         processing: true,
         data: categories,
         destroy: true,
+        autoWidth: false,
         language: {
           paginate: {
             first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
@@ -275,10 +353,15 @@ const BasicTable = () => {
           zeroRecords: 'No matching records found',
         },
         columns: [
-          { title: 'Name', data: 'name' },
+          { 
+            title: 'Name', 
+            data: 'name',
+            width: '35%'
+          },
           { 
             title: 'Created At', 
             data: 'createdAt',
+            width: '25%',
             render: (data: any) => {
               try {
                 const date = parseCustomDate(data);
@@ -295,6 +378,7 @@ const BasicTable = () => {
           { 
             title: 'Updated At', 
             data: 'updatedAt',
+            width: '25%',
             render: (data: any) => {
               try {
                 const date = parseCustomDate(data);
@@ -313,52 +397,51 @@ const BasicTable = () => {
             data: null,
             orderable: false,
             searchable: false,
-            render: (data: any, type: any, row: any) => `
-              <div class="d-flex gap-2">
-                <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
-                <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
-                <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-info btn-view">View</button>
-              </div>
-            `,
+            width: '15%',
+            render: (data: any, type: any, row: any) => {
+              return `
+                <div class="d-flex gap-2">
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-info btn-view">View</button>
+                </div>
+              `;
+            },
           },
         ],
         drawCallback: function () {
-          $(this.api().table().body())
-            .find('.btn-edit, .btn-delete, .btn-view')
-            .off('click')
-            .on('click', function (e) {
-              e.preventDefault()
-              e.stopPropagation()
-              const id = $(this).data('id')
-              const type = $(this).hasClass('btn-edit')
-                ? 'edit'
-                : $(this).hasClass('btn-delete')
-                ? 'delete'
-                : 'view'
-              handleTableButtonClick(id, type)
-            })
-        },
+          $('.btn-edit, .btn-delete, .btn-view').off('click').on('click', function (e) {
+            e.preventDefault()
+            e.stopPropagation()
+            const id = $(this).data('id')
+            const type = $(this).hasClass('btn-edit')
+              ? 'edit'
+              : $(this).hasClass('btn-delete')
+              ? 'delete'
+              : 'view'
+            handleTableButtonClick(id, type)
+          })
+        }
       })
-      setDataTable(dt)
+      
+      dataTableRef.current = dt
+    } catch (error) {
+      console.error('Error creating DataTable:', error)
     }
-  }, [categories, dataTable])
-
-  useEffect(() => {
-    if (dataTable && categories.length > 0) {
-      dataTable.clear()
-      dataTable.rows.add(categories)
-      dataTable.draw()
-    }
-  }, [categories, dataTable])
+  }, [categories, handleTableButtonClick])
 
   useEffect(() => {
     return () => {
-      if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
-        dataTable.destroy(true)
-        setDataTable(null)
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy(true)
+          dataTableRef.current = null
+        } catch (error) {
+          console.error('Error cleaning up DataTable:', error)
+        }
       }
     }
-  }, [dataTable])
+  }, [])
 
   if (isAuthChecking) {
     return (
@@ -382,6 +465,19 @@ const BasicTable = () => {
             </div>
             <p className="mt-2">Loading categories...</p>
           </div>
+        ) : hasFetchError ? (
+          <div className="text-center p-4">
+            <div className="text-danger mb-2">
+              <i className="mdi mdi-alert-circle-outline fs-1"></i>
+            </div>
+            <p className="text-danger">Failed to load categories</p>
+            <button 
+              onClick={fetchCategories} 
+              className="btn btn-primary mt-2"
+            >
+              <i className="mdi mdi-reload me-1"></i>Try Again
+            </button>
+          </div>
         ) : categories.length === 0 ? (
           <div className="text-center p-4">
             <p>No categories found.</p>
@@ -390,19 +486,21 @@ const BasicTable = () => {
             </Link>
           </div>
         ) : (
-          <table
-            ref={table}
-            className="table table-striped dt-responsive align-middle mb-0 w-100"
-          >
-            <thead className="thead-sm text-uppercase fs-xxs">
-              <tr>
-                <th>Name</th>
-                <th>Created At</th>
-                <th>Updated At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-          </table>
+          <div className="table-responsive">
+            <table
+              ref={table}
+              className="table table-striped dt-responsive align-middle mb-0 w-100"
+            >
+              <thead className="thead-sm text-uppercase fs-xxs">
+                <tr>
+                  <th>Name</th>
+                  <th>Created At</th>
+                  <th>Updated At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
         )}
       </ComponentCard>
     </Fragment>

@@ -1,50 +1,47 @@
 'use client'
 
+import $ from 'jquery'
+import ReactDOMServer from 'react-dom/server'
+import Swal from 'sweetalert2'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Card, Col, Container, Row, Spinner } from 'react-bootstrap'
+import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useDispatch, useSelector } from 'react-redux'
+import { jwtDecode } from 'jwt-decode'
+import DataTable from 'datatables.net-react'
+import DT from 'datatables.net-bs5'
+import 'datatables.net-responsive'
 import ComponentCard from '@/components/cards/ComponentCard'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
-import { Card, Col, Container, Row, Spinner } from 'react-bootstrap'
-import DT from 'datatables.net-bs5'
-import DataTable from 'datatables.net-react'
-import 'datatables.net-responsive'
-import ReactDOMServer from 'react-dom/server'
-import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
-import { Fragment, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-import Swal from 'sweetalert2'
-import { useRouter } from 'next/navigation'
-import { useSelector, useDispatch } from 'react-redux'
+import Toaster from '@/components/helper/toaster'
+import { useToasts } from '@/components/helper/useToasts'
 import { RootState } from '@/store'
 import { appTitle } from '@/helpers'
-import $ from 'jquery'
-import { useToasts } from '@/components/helper/useToasts'
-import Toaster from '@/components/helper/toaster'
 import { clearToken, setToken } from '@/store/authSlice'
-import { jwtDecode } from 'jwt-decode'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
-
 let isShowingSessionAlert = false
 
 class ApiClient {
-  private baseURL: string;
-  
+  private baseURL: string
+
   constructor() {
-    this.baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+    this.baseURL = API_URL
   }
-  
+
   private async handleResponse(response: Response, onTokenExpired: () => Promise<void>) {
     if (response.status === 401) {
       await onTokenExpired()
-      throw new Error('Session expired');
+      throw new Error('Session expired')
     }
-    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
-    
-    return await response.json();
+    return await response.json()
   }
-  
+
   async get(url: string, token: string, onTokenExpired: () => Promise<void>) {
     const response = await fetch(`${this.baseURL}${url}`, {
       method: 'GET',
@@ -52,11 +49,10 @@ class ApiClient {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-    });
-    
-    return this.handleResponse(response, onTokenExpired);
+    })
+    return this.handleResponse(response, onTokenExpired)
   }
-  
+
   async post(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
     const response = await fetch(`${this.baseURL}${url}`, {
       method: 'POST',
@@ -65,11 +61,10 @@ class ApiClient {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(data),
-    });
-    
-    return this.handleResponse(response, onTokenExpired);
+    })
+    return this.handleResponse(response, onTokenExpired)
   }
-  
+
   async put(url: string, data: any, token: string, onTokenExpired: () => Promise<void>) {
     const response = await fetch(`${this.baseURL}${url}`, {
       method: 'PUT',
@@ -78,11 +73,10 @@ class ApiClient {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(data),
-    });
-    
-    return this.handleResponse(response, onTokenExpired);
+    })
+    return this.handleResponse(response, onTokenExpired)
   }
-  
+
   async delete(url: string, token: string, onTokenExpired: () => Promise<void>) {
     const response = await fetch(`${this.baseURL}${url}`, {
       method: 'DELETE',
@@ -90,42 +84,37 @@ class ApiClient {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-    });
-    
-    return this.handleResponse(response, onTokenExpired);
+    })
+    return this.handleResponse(response, onTokenExpired)
   }
 }
 
-export const apiClient = new ApiClient();
+export const apiClient = new ApiClient()
 
 const validateToken = (token: string): boolean => {
   try {
-    const decoded: any = jwtDecode(token);
-    return decoded.exp > Date.now() / 1000;
+    const decoded: any = jwtDecode(token)
+    return decoded.exp > Date.now() / 1000
   } catch {
-    return false;
+    return false
   }
-};
+}
 
 const parseCustomDate = (dateString: string): Date => {
-  const [datePart, timePart, period] = dateString.split(' ');
-  const [day, month, year] = datePart.split('-').map(Number);
-  const [hours, minutes] = timePart.split(':').map(Number);
-  
-  let hours24 = hours;
-  if (period === 'PM' && hours !== 12) {
-    hours24 += 12;
-  } else if (period === 'AM' && hours === 12) {
-    hours24 = 0;
-  }
-  
-  return new Date(year, month - 1, day, hours24, minutes);
-};
+  if (!dateString) return new Date()
+  const [datePart, timePart, period] = dateString.split(' ')
+  const [day, month, year] = datePart.split('-').map(Number)
+  const [hours, minutes] = timePart.split(':').map(Number)
+  let hours24 = hours
+  if (period === 'PM' && hours !== 12) hours24 += 12
+  else if (period === 'AM' && hours === 12) hours24 = 0
+  return new Date(year, month - 1, day, hours24, minutes)
+}
 
 const BasicTable = () => {
   DataTable.use(DT)
   const table = useRef<HTMLTableElement>(null)
-  const [dataTable, setDataTable] = useState<any>(null)
+  const dataTableRef = useRef<any>(null)
   const [subcategories, setSubcategories] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -136,10 +125,9 @@ const BasicTable = () => {
   const { toasts, addToast, removeToast } = useToasts()
   const token = useSelector((state: RootState) => state.auth.token)
 
-  const handleTokenExpired = async () => {
+  const handleTokenExpired = useCallback(async () => {
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
-      
       await Swal.fire({
         icon: 'warning',
         title: 'Session Expired',
@@ -147,33 +135,29 @@ const BasicTable = () => {
         confirmButtonText: 'OK',
         allowOutsideClick: false,
       })
-      
       setTimeout(() => {
         isShowingSessionAlert = false
       }, 1000)
     }
-    
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
-  }
+  }, [dispatch, router])
 
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     try {
       if (!token || !validateToken(token)) {
         await handleTokenExpired()
         return
       }
       const data = await apiClient.get('/categories', token, handleTokenExpired)
-      setCategories(data)
-    } catch (error: any) {
-      if (error instanceof Error && error.message.includes('Session expired')) {
-        return
-      }
+      setCategories(data || [])
+    } catch {
+      setCategories([])
     }
-  }
+  }, [token, handleTokenExpired])
 
-  const fetchSubcategories = async () => {
+  const fetchSubcategories = useCallback(async () => {
     try {
       setIsLoading(true)
       setHasFetchError(false)
@@ -181,58 +165,26 @@ const BasicTable = () => {
         await handleTokenExpired()
         return
       }
-
-      const response = await fetch(`${API_URL}/subcategories`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.status === 401) {
-        await handleTokenExpired()
-        return
-      }
-
-      if (response.status === 404) {
-        setSubcategories([])
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.status === false) {
-        setSubcategories([])
-      } else if (Array.isArray(data)) {
-        setSubcategories(data)
-      } else if (data.data && Array.isArray(data.data)) {
-        setSubcategories(data.data)
-      } else {
-        setSubcategories([])
-      }
+      const data = await apiClient.get('/subcategories', token, handleTokenExpired)
+      if (data.status === false) setSubcategories([])
+      else if (Array.isArray(data)) setSubcategories(data)
+      else if (data.data && Array.isArray(data.data)) setSubcategories(data.data)
+      else setSubcategories([])
     } catch (error: any) {
-      if (error instanceof Error && error.message.includes('Session expired')) {
-        return
-      }
-      if (!error.message.includes('404')) {
-        setHasFetchError(true)
-      } else {
-        setSubcategories([])
-      }
+      if (!error.message?.includes('404')) setHasFetchError(true)
+      else setSubcategories([])
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [token, handleTokenExpired])
 
-  const getCategoryName = (categoryId: string) => {
-    const category = categories.find(cat => cat.id === categoryId)
-    return category ? category.name : 'Unknown Category'
-  }
+  const getCategoryName = useCallback(
+    (categoryId: string) => {
+      const category = categories.find((cat) => cat.id === categoryId)
+      return category ? category.name : 'Loading...'
+    },
+    [categories]
+  )
 
   useEffect(() => {
     document.title = `${appTitle} Subcategories Management`
@@ -244,7 +196,6 @@ const BasicTable = () => {
         setIsAuthChecking(false)
         return
       }
-
       const stored = localStorage.getItem('user')
       if (stored) {
         try {
@@ -254,89 +205,111 @@ const BasicTable = () => {
             setIsAuthChecking(false)
             return
           }
-        } catch (error) {
-        }
+        } catch {}
       }
-
       await handleTokenExpired()
     }
-
     checkAuth()
-  }, [dispatch, token])
+  }, [dispatch, token, handleTokenExpired])
 
   useEffect(() => {
     if (token && validateToken(token)) {
       const fetchData = async () => {
-        await Promise.all([fetchCategories(), fetchSubcategories()])
+        await fetchCategories()
+        await fetchSubcategories()
       }
       fetchData()
-    } else {
-      setIsLoading(false)
-    }
+    } else setIsLoading(false)
   }, [token])
 
   useEffect(() => {
-    const handleFocus = () => {
+    const handleFocus = async () => {
       if (token && validateToken(token)) {
-        fetchSubcategories()
+        try {
+          const subcatData = await apiClient.get('/subcategories', token, handleTokenExpired)
+          if (subcatData.status === false) setSubcategories([])
+          else if (Array.isArray(subcatData)) setSubcategories(subcatData)
+          else if (subcatData.data && Array.isArray(subcatData.data)) setSubcategories(subcatData.data)
+          else setSubcategories([])
+          const catData = await apiClient.get('/categories', token, handleTokenExpired)
+          setCategories(catData || [])
+        } catch {}
       }
     }
-
     window.addEventListener('focus', handleFocus)
     return () => {
       window.removeEventListener('focus', handleFocus)
     }
-  }, [token])
+  }, [token, handleTokenExpired])
 
-  const handleDelete = async (id: string) => {
-    if (!token || !validateToken(token)) {
-      await handleTokenExpired()
-      return
-    }
-
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      text: "You won't be able to revert this!",
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, delete it!',
-    })
-
-    if (result.isConfirmed) {
-      try {
-        await apiClient.delete(`/subcategories/${id}`, token, handleTokenExpired)
-        setSubcategories(prev => prev.filter(subcat => subcat.id !== id))
-        addToast('Subcategory deleted successfully', { toastClass: 'bg-success', delay: 3000 })
-      } catch (error: any) {
-        if (error instanceof Error && error.message.includes('Session expired')) {
-          return
-        }
-        addToast('Failed to delete subcategory', { toastClass: 'bg-danger', delay: 3000 })
-        fetchSubcategories()
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!token || !validateToken(token)) {
+        await handleTokenExpired()
+        return
       }
-    }
-  }
+      const result = await Swal.fire({
+        title: 'Are you sure?',
+        text: "You won't be able to revert this!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Yes, delete it!',
+      })
+      if (result.isConfirmed) {
+        try {
+          await apiClient.delete(`/subcategories/${id}`, token, handleTokenExpired)
+          if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+            try {
+              dataTableRef.current.destroy()
+              dataTableRef.current = null
+            } catch {}
+          }
+          const updatedSubcategories = subcategories.filter((subcat) => subcat.id !== id)
+          setSubcategories(updatedSubcategories)
+          addToast('Subcategory deleted successfully', { toastClass: 'bg-success', delay: 3000 })
+        } catch {
+          addToast('Failed to delete subcategory', { toastClass: 'bg-danger', delay: 3000 })
+          fetchSubcategories()
+        }
+      }
+    },
+    [token, handleTokenExpired, addToast, fetchSubcategories, subcategories]
+  )
 
-  const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
-    if (type === 'delete') {
-      await handleDelete(id)
-    } else if (type === 'view') {
-      router.push(`/subcategories/view/${id}`)
-    } else if (type === 'edit') {
-      router.push(`/subcategories/edit/${id}`)
-    }
-  }
+  const handleTableButtonClick = useCallback(
+    async (id: string, type: 'edit' | 'delete' | 'view') => {
+      if (type === 'delete') await handleDelete(id)
+      else if (type === 'view') router.push(`/subcategories/view/${id}`)
+      else if (type === 'edit') router.push(`/subcategories/edit/${id}`)
+    },
+    [handleDelete, router]
+  )
 
   useEffect(() => {
-    if (subcategories.length > 0 && table.current && !dataTable) {
+    if (!table.current || subcategories.length === 0 || categories.length === 0) {
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy()
+          dataTableRef.current = null
+        } catch {}
+      }
+      return
+    }
+    if (dataTableRef.current && $.fn.DataTable.isDataTable(table.current)) {
+      try {
+        dataTableRef.current.destroy()
+      } catch {}
+    }
+    try {
       const dt = $(table.current).DataTable({
         responsive: true,
         serverSide: false,
         processing: true,
         data: subcategories,
         destroy: true,
+        autoWidth: false,
         language: {
           paginate: {
             first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
@@ -348,49 +321,45 @@ const BasicTable = () => {
           zeroRecords: 'No matching records found',
         },
         columns: [
-          { title: 'Name', data: 'name' },
-          { 
-            title: 'Category', 
+          { title: 'Name', data: 'name', width: '20%' },
+          {
+            title: 'Category',
             data: 'category_id',
-            render: (data: any) => getCategoryName(data)
+            width: '20%',
+            render: (data: any) => getCategoryName(data),
           },
-          { 
-            title: 'Created At', 
+          {
+            title: 'Created At',
             data: 'createdAt',
+            width: '20%',
             render: (data: any) => {
               try {
-                const date = parseCustomDate(data);
-                return date.toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric'
-                })
-              } catch (error) {
-                return 'Invalid Date';
+                const date = parseCustomDate(data)
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+              } catch {
+                return 'Invalid Date'
               }
-            }
+            },
           },
-          { 
-            title: 'Updated At', 
+          {
+            title: 'Updated At',
             data: 'updatedAt',
+            width: '20%',
             render: (data: any) => {
               try {
-                const date = parseCustomDate(data);
-                return date.toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric'
-                })
-              } catch (error) {
-                return 'Invalid Date';
+                const date = parseCustomDate(data)
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+              } catch {
+                return 'Invalid Date'
               }
-            }
+            },
           },
           {
             title: 'Actions',
             data: null,
             orderable: false,
             searchable: false,
+            width: '20%',
             render: (data: any, type: any, row: any) => `
               <div class="d-flex gap-2">
                 <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
@@ -401,8 +370,7 @@ const BasicTable = () => {
           },
         ],
         drawCallback: function () {
-          $(this.api().table().body())
-            .find('.btn-edit, .btn-delete, .btn-view')
+          $('.btn-edit, .btn-delete, .btn-view')
             .off('click')
             .on('click', function (e) {
               e.preventDefault()
@@ -417,26 +385,20 @@ const BasicTable = () => {
             })
         },
       })
-      setDataTable(dt)
-    }
-  }, [subcategories, dataTable, categories])
-
-  useEffect(() => {
-    if (dataTable && subcategories.length > 0) {
-      dataTable.clear()
-      dataTable.rows.add(subcategories)
-      dataTable.draw()
-    }
-  }, [subcategories, dataTable])
+      dataTableRef.current = dt
+    } catch {}
+  }, [subcategories, categories, getCategoryName, handleTableButtonClick])
 
   useEffect(() => {
     return () => {
-      if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
-        dataTable.destroy(true)
-        setDataTable(null)
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy(true)
+          dataTableRef.current = null
+        } catch {}
       }
     }
-  }, [dataTable])
+  }, [])
 
   if (isAuthChecking) {
     return (
@@ -466,10 +428,7 @@ const BasicTable = () => {
               <i className="mdi mdi-alert-circle-outline fs-1"></i>
             </div>
             <p className="text-danger">Failed to load subcategories</p>
-            <button 
-              onClick={fetchSubcategories} 
-              className="btn btn-primary mt-2"
-            >
+            <button onClick={fetchSubcategories} className="btn btn-primary mt-2">
               <i className="mdi mdi-reload me-1"></i>Try Again
             </button>
           </div>
@@ -481,20 +440,19 @@ const BasicTable = () => {
             </Link>
           </div>
         ) : (
-          <table
-            ref={table}
-            className="table table-striped dt-responsive align-middle mb-0 w-100"
-          >
-            <thead className="thead-sm text-uppercase fs-xxs">
-              <tr>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Created At</th>
-                <th>Updated At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-          </table>
+          <div className="table-responsive">
+            <table ref={table} className="table table-striped dt-responsive align-middle mb-0 w-100">
+              <thead className="thead-sm text-uppercase fs-xxs">
+                <tr>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Created At</th>
+                  <th>Updated At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
         )}
       </ComponentCard>
     </Fragment>

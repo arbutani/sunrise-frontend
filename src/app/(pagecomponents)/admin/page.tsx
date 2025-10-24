@@ -2,13 +2,13 @@
 
 import ComponentCard from '@/components/cards/ComponentCard'
 import PageBreadcrumb from '@/components/PageBreadcrumb'
-import { Card, Col, Container, Row } from 'react-bootstrap'
+import { Card, Col, Container, Row, Spinner } from 'react-bootstrap'
 import DT from 'datatables.net-bs5'
 import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
 import ReactDOMServer from 'react-dom/server'
 import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Swal from 'sweetalert2'
 import { useRouter } from 'next/navigation'
@@ -107,21 +107,40 @@ const validateToken = (token: string): boolean => {
   }
 };
 
+const parseCustomDate = (dateString: string): Date => {
+  if (!dateString) return new Date();
+  
+  const [datePart, timePart, period] = dateString.split(' ');
+  const [day, month, year] = datePart.split('-').map(Number);
+  const [hours, minutes] = timePart.split(':').map(Number);
+  
+  let hours24 = hours;
+  if (period === 'PM' && hours !== 12) {
+    hours24 += 12;
+  } else if (period === 'AM' && hours === 12) {
+    hours24 = 0;
+  }
+  
+  return new Date(year, month - 1, day, hours24, minutes);
+};
+
 const BasicTable = () => {
   DataTable.use(DT)
   const table = useRef<HTMLTableElement>(null)
-  const [dataTable, setDataTable] = useState<any>(null)
-  const router = useRouter()
-  const dispatch = useDispatch()
+  const dataTableRef = useRef<any>(null)
   const [admins, setAdmins] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isAuthChecking, setIsAuthChecking] = useState(true)
+  const [hasFetchError, setHasFetchError] = useState(false)
+  const router = useRouter()
+  const dispatch = useDispatch()
   const { toasts, addToast, removeToast } = useToasts()
 
   const token = useSelector((state: RootState) => state.auth.token)
   const tokenPayload = token ? jwtDecode<any>(token) : null
   const isAdmin = tokenPayload?.type === 'admin'
 
-  const handleTokenExpired = async () => {
+  const handleTokenExpired = useCallback(async () => {
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -141,12 +160,16 @@ const BasicTable = () => {
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
-  }
+  }, [dispatch, router])
+
+  useEffect(() => {
+    document.title = `${appTitle} Admin Management`
+  }, [])
 
   useEffect(() => {
     const checkAuth = async () => {
       if (token && validateToken(token)) {
-        setIsLoading(false)
+        setIsAuthChecking(false)
         return
       }
 
@@ -156,7 +179,7 @@ const BasicTable = () => {
           const parsed = JSON.parse(stored)
           if (parsed.token && validateToken(parsed.token)) {
             dispatch(setToken(parsed.token))
-            setIsLoading(false)
+            setIsAuthChecking(false)
             return
           }
         } catch (error) {
@@ -166,12 +189,45 @@ const BasicTable = () => {
 
       await handleTokenExpired()
     }
-    checkAuth()
-  }, [dispatch, token])
 
-  useEffect(() => {
-    document.title = `${appTitle}Admin Management`
-  }, [])
+    checkAuth()
+  }, [dispatch, token, handleTokenExpired])
+
+  const fetchAdmins = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setHasFetchError(false)
+      if (!token || !validateToken(token)) {
+        await handleTokenExpired()
+        return
+      }
+
+      const data = await apiClient.get('/employee-management', token, handleTokenExpired)
+      
+      if (data.status === false) {
+        setAdmins([])
+      } else if (Array.isArray(data)) {
+        const filteredAdmins = data.filter((emp: any) => emp.type === 'admin')
+        setAdmins(filteredAdmins)
+      } else if (data.data && Array.isArray(data.data)) {
+        const filteredAdmins = data.data.filter((emp: any) => emp.type === 'admin')
+        setAdmins(filteredAdmins)
+      } else {
+        setAdmins([])
+      }
+    } catch (error: any) {
+      if (error instanceof Error && error.message.includes('Session expired')) {
+        return
+      }
+      if (!error.message?.includes('404')) {
+        setHasFetchError(true)
+      } else {
+        setAdmins([])
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }, [token, handleTokenExpired])
 
   useEffect(() => {
     if (token && validateToken(token)) {
@@ -179,31 +235,38 @@ const BasicTable = () => {
     } else {
       setIsLoading(false)
     }
-  }, [token])
+  }, [token, fetchAdmins])
 
-  const fetchAdmins = async () => {
-    try {
-      setIsLoading(true)
-      if (!token || !validateToken(token)) {
-        await handleTokenExpired()
-        return
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (token && validateToken(token)) {
+        try {
+          const data = await apiClient.get('/employee-management', token, handleTokenExpired)
+          
+          if (data.status === false) {
+            setAdmins([])
+          } else if (Array.isArray(data)) {
+            const filteredAdmins = data.filter((emp: any) => emp.type === 'admin')
+            setAdmins(filteredAdmins)
+          } else if (data.data && Array.isArray(data.data)) {
+            const filteredAdmins = data.data.filter((emp: any) => emp.type === 'admin')
+            setAdmins(filteredAdmins)
+          } else {
+            setAdmins([])
+          }
+        } catch (error) {
+          console.error('Error fetching admins on focus:', error)
+        }
       }
-
-      const data = await apiClient.get('/employee-management', token, handleTokenExpired)
-      const filteredAdmins = data.filter((emp: any) => emp.type === 'admin')
-      setAdmins(filteredAdmins)
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('Session expired')) {
-        return
-      }
-      console.error('Error fetching admins:', error)
-      addToast('Failed to fetch admins', { toastClass: 'bg-danger', delay: 3000 })
-    } finally {
-      setIsLoading(false)
     }
-  }
 
-  const handleDelete = async (id: string) => {
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [token, handleTokenExpired])
+
+  const handleDelete = useCallback(async (id: string) => {
     if (!token || !validateToken(token)) {
       await handleTokenExpired()
       return
@@ -231,9 +294,22 @@ const BasicTable = () => {
     if (result.isConfirmed) {
       try {
         await apiClient.delete(`/employee-management/${id}`, token, handleTokenExpired)
-        setAdmins(prev => prev.filter(admin => admin.id !== id))
+        
+        if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+          try {
+            dataTableRef.current.destroy()
+            dataTableRef.current = null
+          } catch (error) {
+            console.error('Error destroying DataTable:', error)
+          }
+        }
+        
+        const updatedAdmins = admins.filter(admin => admin.id !== id)
+        setAdmins(updatedAdmins)
+        
         addToast('Admin deleted successfully', { toastClass: 'bg-success', delay: 3000 })
-      } catch (error) {
+        
+      } catch (error: any) {
         if (error instanceof Error && error.message.includes('Session expired')) {
           return
         }
@@ -241,16 +317,52 @@ const BasicTable = () => {
         fetchAdmins()
       }
     }
-  }
+  }, [token, handleTokenExpired, addToast, fetchAdmins, admins, isAdmin])
+
+  const handleTableButtonClick = useCallback(async (id: string, type: 'delete') => {
+    if (!isAdmin) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Access Denied',
+        text: 'Only admin can delete other admins.',
+      })
+      return
+    }
+
+    if (type === 'delete') {
+      await handleDelete(id)
+    }
+  }, [handleDelete, isAdmin])
 
   useEffect(() => {
-    if (admins.length > 0 && table.current && !dataTable) {
+    if (!table.current || admins.length === 0) {
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy()
+          dataTableRef.current = null
+        } catch (error) {
+          console.error('Error destroying DataTable:', error)
+        }
+      }
+      return
+    }
+
+    if (dataTableRef.current && $.fn.DataTable.isDataTable(table.current)) {
+      try {
+        dataTableRef.current.destroy()
+      } catch (error) {
+        console.error('Error destroying DataTable:', error)
+      }
+    }
+
+    try {
       const dt = $(table.current).DataTable({
         responsive: true,
         serverSide: false,
         processing: true,
         data: admins,
         destroy: true,
+        autoWidth: false,
         language: {
           paginate: {
             first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
@@ -262,59 +374,123 @@ const BasicTable = () => {
           zeroRecords: 'No matching records found',
         },
         columns: [
-          { title: 'Name', data: 'name' },
-          { title: 'E-Mail Address', data: 'email_address' },
-          { title: 'Type', data: 'type' },
-          { title: 'Reference Number', data: 'reference_number' },
-          { title: 'Reference Date', data: 'reference_date' },
-          { title: 'Created At', data: 'createdAt' },
-          { title: 'Updated At', data: 'updatedAt' },
+          { 
+            title: 'Name', 
+            data: 'name',
+            width: '15%'
+          },
+          { 
+            title: 'E-Mail Address', 
+            data: 'email_address',
+            width: '20%'
+          },
+          { 
+            title: 'Type', 
+            data: 'type',
+            width: '10%'
+          },
+          { 
+            title: 'Reference Number', 
+            data: 'reference_number',
+            width: '15%'
+          },
+          { 
+            title: 'Reference Date', 
+            data: 'reference_date',
+            width: '10%'
+          },
+          { 
+            title: 'Created At', 
+            data: 'createdAt',
+            width: '15%',
+            render: (data: any) => {
+              try {
+                const date = parseCustomDate(data);
+                return date.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              } catch (error) {
+                return 'Invalid Date';
+              }
+            }
+          },
+          { 
+            title: 'Updated At', 
+            data: 'updatedAt',
+            width: '15%',
+            render: (data: any) => {
+              try {
+                const date = parseCustomDate(data);
+                return date.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              } catch (error) {
+                return 'Invalid Date';
+              }
+            }
+          },
           {
             title: 'Actions',
             data: null,
             orderable: false,
             searchable: false,
-            render: (_: any, __: any, row: any) => `
-              <div class="d-flex gap-2">
-                <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
-              </div>`,
+            width: '10%',
+            render: (data: any, type: any, row: any) => {
+              return `
+                <div class="d-flex gap-2">
+                  <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
+                </div>
+              `;
+            },
           },
         ],
         drawCallback: function () {
-          $(this.api().table().body())
-            .find('.btn-delete')
-            .off('click')
-            .on('click', function (e) {
-              e.preventDefault()
-              const id = $(this).data('id')
-              handleDelete(id)
-            })
-        },
+          $('.btn-delete').off('click').on('click', function (e) {
+            e.preventDefault()
+            e.stopPropagation()
+            const id = $(this).data('id')
+            handleTableButtonClick(id, 'delete')
+          })
+        }
       })
-      setDataTable(dt)
+      
+      dataTableRef.current = dt
+    } catch (error) {
+      console.error('Error creating DataTable:', error)
     }
-  }, [admins, dataTable])
-
-  useEffect(() => {
-    if (dataTable && admins.length > 0) {
-      dataTable.clear()
-      dataTable.rows.add(admins)
-      dataTable.draw()
-    }
-  }, [admins, dataTable])
+  }, [admins, handleTableButtonClick])
 
   useEffect(() => {
     return () => {
-      try {
-        if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
-          dataTable.destroy(true)
-          setDataTable(null)
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy(true)
+          dataTableRef.current = null
+        } catch (error) {
+          console.error('Error cleaning up DataTable:', error)
         }
-      } catch (e) {
-        console.warn('DataTable destroy skipped:', e)
       }
     }
-  }, [dataTable])
+  }, [])
+
+  if (isAuthChecking) {
+    return (
+      <Container fluid className="px-2 px-sm-3">
+        <div className="text-center py-5">
+          <Spinner animation="border" role="status" className="me-2" />
+          Checking authentication...
+        </div>
+      </Container>
+    )
+  }
 
   return (
     <Fragment>
@@ -327,25 +503,46 @@ const BasicTable = () => {
             </div>
             <p className="mt-2">Loading admins...</p>
           </div>
+        ) : hasFetchError ? (
+          <div className="text-center p-4">
+            <div className="text-danger mb-2">
+              <i className="mdi mdi-alert-circle-outline fs-1"></i>
+            </div>
+            <p className="text-danger">Failed to load admins</p>
+            <button 
+              onClick={fetchAdmins} 
+              className="btn btn-primary mt-2"
+            >
+              <i className="mdi mdi-reload me-1"></i>Try Again
+            </button>
+          </div>
         ) : admins.length === 0 ? (
           <div className="text-center p-4">
             <p>No admins found.</p>
+            <Link href="/admin/add" className="btn btn-primary mt-2">
+              <i className="mdi mdi-plus me-1"></i>Add First Admin
+            </Link>
           </div>
         ) : (
-          <table ref={table} className="table table-striped dt-responsive align-middle mb-0 w-100">
-            <thead className="thead-sm text-uppercase fs-xxs">
-              <tr>
-                <th>Name</th>
-                <th>E-Mail Address</th>
-                <th>Type</th>
-                <th>Reference Number</th>
-                <th>Reference Date</th>
-                <th>Created At</th>
-                <th>Updated At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-          </table>
+          <div className="table-responsive">
+            <table
+              ref={table}
+              className="table table-striped dt-responsive align-middle mb-0 w-100"
+            >
+              <thead className="thead-sm text-uppercase fs-xxs">
+                <tr>
+                  <th>Name</th>
+                  <th>E-Mail Address</th>
+                  <th>Type</th>
+                  <th>Reference Number</th>
+                  <th>Reference Date</th>
+                  <th>Created At</th>
+                  <th>Updated At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
         )}
       </ComponentCard>
     </Fragment>

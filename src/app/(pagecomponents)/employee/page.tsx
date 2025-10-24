@@ -8,7 +8,7 @@ import DataTable from 'datatables.net-react'
 import 'datatables.net-responsive'
 import ReactDOMServer from 'react-dom/server'
 import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Swal from 'sweetalert2'
 import { useRouter } from 'next/navigation'
@@ -107,22 +107,40 @@ const validateToken = (token: string): boolean => {
   }
 };
 
+const parseCustomDate = (dateString: string): Date => {
+  if (!dateString) return new Date();
+  
+  const [datePart, timePart, period] = dateString.split(' ');
+  const [day, month, year] = datePart.split('-').map(Number);
+  const [hours, minutes] = timePart.split(':').map(Number);
+  
+  let hours24 = hours;
+  if (period === 'PM' && hours !== 12) {
+    hours24 += 12;
+  } else if (period === 'AM' && hours === 12) {
+    hours24 = 0;
+  }
+  
+  return new Date(year, month - 1, day, hours24, minutes);
+};
+
 const BasicTable = () => {
   DataTable.use(DT)
   const table = useRef<HTMLTableElement>(null)
-  const [dataTable, setDataTable] = useState<any>(null)
-  const router = useRouter()
-  const dispatch = useDispatch()
+  const dataTableRef = useRef<any>(null)
   const [employees, setEmployees] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthChecking, setIsAuthChecking] = useState(true)
+  const [hasFetchError, setHasFetchError] = useState(false)
+  const router = useRouter()
+  const dispatch = useDispatch()
   const { toasts, addToast, removeToast } = useToasts()
 
   const token = useSelector((state: RootState) => state.auth.token)
   const tokenPayload = token ? jwtDecode<any>(token) : null
   const isAdmin = tokenPayload?.type === 'admin'
 
-  const handleTokenExpired = async () => {
+  const handleTokenExpired = useCallback(async () => {
     if (!isShowingSessionAlert) {
       isShowingSessionAlert = true
       
@@ -142,7 +160,7 @@ const BasicTable = () => {
     dispatch(clearToken())
     localStorage.removeItem('user')
     router.push('/login')
-  }
+  }, [dispatch, router])
 
   useEffect(() => {
     document.title = `${appTitle} Employee Management`
@@ -173,7 +191,43 @@ const BasicTable = () => {
     }
 
     checkAuth()
-  }, [dispatch, token])
+  }, [dispatch, token, handleTokenExpired])
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setHasFetchError(false)
+      if (!token || !validateToken(token)) {
+        await handleTokenExpired()
+        return
+      }
+
+      const data = await apiClient.get('/employee-management', token, handleTokenExpired)
+      
+      if (data.status === false) {
+        setEmployees([])
+      } else if (Array.isArray(data)) {
+        const filteredEmployees = data.filter((emp: any) => emp.type !== 'admin')
+        setEmployees(filteredEmployees)
+      } else if (data.data && Array.isArray(data.data)) {
+        const filteredEmployees = data.data.filter((emp: any) => emp.type !== 'admin')
+        setEmployees(filteredEmployees)
+      } else {
+        setEmployees([])
+      }
+    } catch (error: any) {
+      if (error instanceof Error && error.message.includes('Session expired')) {
+        return
+      }
+      if (!error.message?.includes('404')) {
+        setHasFetchError(true)
+      } else {
+        setEmployees([])
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }, [token, handleTokenExpired])
 
   useEffect(() => {
     if (token && validateToken(token)) {
@@ -181,30 +235,38 @@ const BasicTable = () => {
     } else {
       setIsLoading(false)
     }
-  }, [token])
+  }, [token, fetchEmployees])
 
-  const fetchEmployees = async () => {
-    try {
-      setIsLoading(true)
-      if (!token || !validateToken(token)) {
-        await handleTokenExpired()
-        return
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (token && validateToken(token)) {
+        try {
+          const data = await apiClient.get('/employee-management', token, handleTokenExpired)
+          
+          if (data.status === false) {
+            setEmployees([])
+          } else if (Array.isArray(data)) {
+            const filteredEmployees = data.filter((emp: any) => emp.type !== 'admin')
+            setEmployees(filteredEmployees)
+          } else if (data.data && Array.isArray(data.data)) {
+            const filteredEmployees = data.data.filter((emp: any) => emp.type !== 'admin')
+            setEmployees(filteredEmployees)
+          } else {
+            setEmployees([])
+          }
+        } catch (error) {
+          console.error('Error fetching employees on focus:', error)
+        }
       }
-
-      const data = await apiClient.get('/employee-management', token, handleTokenExpired)
-      const filteredEmployees = data.filter((emp: any) => emp.type !== 'admin')
-      setEmployees(filteredEmployees)
-    } catch (error: any) {
-      if (error instanceof Error && error.message.includes('Session expired')) {
-        return
-      }
-      addToast('Failed to fetch employees', { toastClass: 'bg-danger', delay: 3000 })
-    } finally {
-      setIsLoading(false)
     }
-  }
 
-  const handleDelete = async (id: string) => {
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [token, handleTokenExpired])
+
+  const handleDelete = useCallback(async (id: string) => {
     if (!token || !validateToken(token)) {
       await handleTokenExpired()
       return
@@ -232,8 +294,21 @@ const BasicTable = () => {
     if (result.isConfirmed) {
       try {
         await apiClient.delete(`/employee-management/${id}`, token, handleTokenExpired)
-        setEmployees(prev => prev.filter(emp => emp.id !== id))
+        
+        if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+          try {
+            dataTableRef.current.destroy()
+            dataTableRef.current = null
+          } catch (error) {
+            console.error('Error destroying DataTable:', error)
+          }
+        }
+        
+        const updatedEmployees = employees.filter(emp => emp.id !== id)
+        setEmployees(updatedEmployees)
+        
         addToast('Employee deleted successfully', { toastClass: 'bg-success', delay: 3000 })
+        
       } catch (error: any) {
         if (error instanceof Error && error.message.includes('Session expired')) {
           return
@@ -242,9 +317,9 @@ const BasicTable = () => {
         fetchEmployees()
       }
     }
-  }
+  }, [token, handleTokenExpired, addToast, fetchEmployees, employees, isAdmin])
 
-  const handleTableButtonClick = async (id: string, type: 'edit' | 'delete' | 'view') => {
+  const handleTableButtonClick = useCallback(async (id: string, type: 'edit' | 'delete' | 'view') => {
     if (!isAdmin) {
       await Swal.fire({
         icon: 'warning',
@@ -261,16 +336,37 @@ const BasicTable = () => {
     } else if (type === 'edit') {
       router.push(`/employee/edit/${id}`)
     }
-  }
+  }, [handleDelete, router, isAdmin])
 
   useEffect(() => {
-    if (employees.length > 0 && table.current && !dataTable) {
+    if (!table.current || employees.length === 0) {
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy()
+          dataTableRef.current = null
+        } catch (error) {
+          console.error('Error destroying DataTable:', error)
+        }
+      }
+      return
+    }
+
+    if (dataTableRef.current && $.fn.DataTable.isDataTable(table.current)) {
+      try {
+        dataTableRef.current.destroy()
+      } catch (error) {
+        console.error('Error destroying DataTable:', error)
+      }
+    }
+
+    try {
       const dt = $(table.current).DataTable({
         responsive: true,
         serverSide: false,
         processing: true,
         data: employees,
         destroy: true,
+        autoWidth: false,
         language: {
           paginate: {
             first: ReactDOMServer.renderToStaticMarkup(<TbChevronsLeft className="fs-lg" />),
@@ -282,46 +378,79 @@ const BasicTable = () => {
           zeroRecords: 'No matching records found',
         },
         columns: [
-          { title: 'Name', data: 'name' },
-          { title: 'E-Mail Address', data: 'email_address' },
-          { title: 'Type', data: 'type' },
-          { title: 'Reference Number', data: 'reference_number' },
+          { 
+            title: 'Name', 
+            data: 'name',
+            width: '15%'
+          },
+          { 
+            title: 'E-Mail Address', 
+            data: 'email_address',
+            width: '20%'
+          },
+          { 
+            title: 'Type', 
+            data: 'type',
+            width: '10%'
+          },
+          { 
+            title: 'Reference Number', 
+            data: 'reference_number',
+            width: '15%'
+          },
           { 
             title: 'Reference Date', 
             data: 'reference_date',
+            width: '10%',
             render: (data: any) => {
               if (!data) return '-'
-              return new Date(data).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-              })
+              try {
+                return new Date(data).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                })
+              } catch {
+                return data
+              }
             }
           },
           { 
             title: 'Created At', 
             data: 'createdAt',
+            width: '15%',
             render: (data: any) => {
-              return new Date(data).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })
+              try {
+                const date = parseCustomDate(data);
+                return date.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              } catch (error) {
+                return 'Invalid Date';
+              }
             }
           },
           { 
             title: 'Updated At', 
             data: 'updatedAt',
+            width: '15%',
             render: (data: any) => {
-              return new Date(data).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })
+              try {
+                const date = parseCustomDate(data);
+                return date.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              } catch (error) {
+                return 'Invalid Date';
+              }
             }
           },
           {
@@ -329,51 +458,51 @@ const BasicTable = () => {
             data: null,
             orderable: false,
             searchable: false,
-            render: function (data: any, type: any, row: any) {
-              const htmlString = `
+            width: '10%',
+            render: (data: any, type: any, row: any) => {
+              return `
                 <div class="d-flex gap-2">
                   <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-primary btn-edit">Edit</button>
                   <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-danger btn-delete">Delete</button>
                   <button type="button" data-id="${row.id}" class="btn btn-sm btn-soft-info btn-view">View</button>
                 </div>
               `;
-              return htmlString;
             },
           },
         ],
         drawCallback: function () {
-          $(this.api().table().body()).find('.btn-edit, .btn-delete, .btn-view').off('click').on('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const id = $(this).data('id');
-            const buttonType = $(this).hasClass('btn-edit') ? 'edit' : 
-                             $(this).hasClass('btn-delete') ? 'delete' : 'view';
-            
-            handleTableButtonClick(id, buttonType);
-          });
+          $('.btn-edit, .btn-delete, .btn-view').off('click').on('click', function (e) {
+            e.preventDefault()
+            e.stopPropagation()
+            const id = $(this).data('id')
+            const type = $(this).hasClass('btn-edit')
+              ? 'edit'
+              : $(this).hasClass('btn-delete')
+              ? 'delete'
+              : 'view'
+            handleTableButtonClick(id, type)
+          })
         }
       })
-      setDataTable(dt)
+      
+      dataTableRef.current = dt
+    } catch (error) {
+      console.error('Error creating DataTable:', error)
     }
-  }, [employees, dataTable])
-
-  useEffect(() => {
-    if (dataTable && employees.length > 0) {
-      dataTable.clear()
-      dataTable.rows.add(employees)
-      dataTable.draw()
-    }
-  }, [employees, dataTable])
+  }, [employees, handleTableButtonClick])
 
   useEffect(() => {
     return () => {
-      if (dataTable && $.fn.DataTable.isDataTable(table.current)) {
-        dataTable.destroy(true)
-        setDataTable(null)
+      if (dataTableRef.current && table.current && $.fn.DataTable.isDataTable(table.current)) {
+        try {
+          dataTableRef.current.destroy(true)
+          dataTableRef.current = null
+        } catch (error) {
+          console.error('Error cleaning up DataTable:', error)
+        }
       }
     }
-  }, [dataTable])
+  }, [])
 
   if (isAuthChecking) {
     return (
@@ -397,6 +526,19 @@ const BasicTable = () => {
             </div>
             <p className="mt-2">Loading employees...</p>
           </div>
+        ) : hasFetchError ? (
+          <div className="text-center p-4">
+            <div className="text-danger mb-2">
+              <i className="mdi mdi-alert-circle-outline fs-1"></i>
+            </div>
+            <p className="text-danger">Failed to load employees</p>
+            <button 
+              onClick={fetchEmployees} 
+              className="btn btn-primary mt-2"
+            >
+              <i className="mdi mdi-reload me-1"></i>Try Again
+            </button>
+          </div>
         ) : employees.length === 0 ? (
           <div className="text-center p-4">
             <p>No employees found.</p>
@@ -405,23 +547,25 @@ const BasicTable = () => {
             </Link>
           </div>
         ) : (
-          <table
-            ref={table}
-            className="table table-striped dt-responsive align-middle mb-0 w-100"
-          >
-            <thead className="thead-sm text-uppercase fs-xxs">
-              <tr>
-                <th>Name</th>
-                <th>E-Mail Address</th>
-                <th>Type</th>
-                <th>Reference Number</th>
-                <th>Reference Date</th>
-                <th>Created At</th>
-                <th>Updated At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-          </table>
+          <div className="table-responsive">
+            <table
+              ref={table}
+              className="table table-striped dt-responsive align-middle mb-0 w-100"
+            >
+              <thead className="thead-sm text-uppercase fs-xxs">
+                <tr>
+                  <th>Name</th>
+                  <th>E-Mail Address</th>
+                  <th>Type</th>
+                  <th>Reference Number</th>
+                  <th>Reference Date</th>
+                  <th>Created At</th>
+                  <th>Updated At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+            </table>
+          </div>
         )}
       </ComponentCard>
     </Fragment>
@@ -456,8 +600,6 @@ const PageContent = () => (
   </Fragment>
 )
 
-const Page = () => {
-  return <PageContent />
-}
+const Page = () => <PageContent />
 
 export default Page
